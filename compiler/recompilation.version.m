@@ -231,7 +231,7 @@ distribute_pragma_items_class_items(MaybePredOrFunc, SymName, Arity,
         Interface = class_interface_concrete(Methods),
         list.member(Method, Methods),
         Method = method_pred_or_func(_, _, _, MethodPredOrFunc, SymName,
-            TypesAndModes, WithType, _, _, _, _, _, _),
+            TypesAndModes, _, WithType, _, _, _, _, _, _),
         ( MaybePredOrFunc = yes(MethodPredOrFunc)
         ; MaybePredOrFunc = no
         ),
@@ -306,6 +306,10 @@ gather_items_2(Item, !Section, !Info) :-
         ;
             Body = parse_tree_eqv_type(_),
             % When we use an equivalence type we always use the body.
+            NameItem = Item,
+            BodyItem = Item
+        ;
+            Body = parse_tree_subtype(_, _),
             NameItem = Item,
             BodyItem = Item
         ;
@@ -415,9 +419,9 @@ add_gathered_item_2(Item, ItemType, NameArity, Section, MatchingItems0,
     (
         Item = item_pred_decl(ItemPredDecl),
         ItemPredDecl = item_pred_decl_info(Origin, TVarSet, InstVarSet,
-            ExistQVars, PredOrFunc, PredName, TypesAndModes,
-            WithType, WithInst, Det, Cond, Purity, ClassContext,
-            Context, SeqNum),
+            ExistQVars, PredOrFunc, PredName, TypesAndModes, Subtypes,
+            WithType, WithInst, Det, Cond, Purity, ClassContext, Context,
+            SeqNum),
         split_types_and_modes(TypesAndModes, Types, MaybeModes),
         MaybeModes = yes(Modes),
         ( Modes = [_ | _]
@@ -428,8 +432,8 @@ add_gathered_item_2(Item, ItemType, NameArity, Section, MatchingItems0,
         varset.init(EmptyInstVarSet),
         PredItemPredDecl = item_pred_decl_info(Origin, TVarSet,
             EmptyInstVarSet, ExistQVars, PredOrFunc, PredName,
-            TypesWithoutModes, WithType, no, no, Cond, Purity, ClassContext,
-            Context, SeqNum),
+            TypesWithoutModes, Subtypes, WithType, no, no, Cond, Purity,
+            ClassContext, Context, SeqNum),
         PredItem = item_pred_decl(PredItemPredDecl),
         (
             WithInst = yes(_),
@@ -470,7 +474,7 @@ split_class_method_types_and_modes(Method0) = Methods :-
     % Always strip the context from the item -- this is needed
     % so the items can be easily tested for equality.
     Method0 = method_pred_or_func(TVarSet, InstVarSet, ExistQVars, PredOrFunc,
-        SymName, TypesAndModes, WithType, WithInst, MaybeDet, Cond,
+        SymName, TypesAndModes, Subtypes, WithType, WithInst, MaybeDet, Cond,
         Purity, ClassContext, _),
     (
         split_types_and_modes(TypesAndModes, Types, MaybeModes),
@@ -500,8 +504,8 @@ split_class_method_types_and_modes(Method0) = Methods :-
     ),
     varset.init(EmptyInstVarSet),
     PredOrFuncItem = method_pred_or_func(TVarSet, EmptyInstVarSet, ExistQVars,
-        PredOrFunc, SymName, TypesWithoutModes, WithType, no, no, Cond, Purity,
-        ClassContext, term.context_init),
+        PredOrFunc, SymName, TypesWithoutModes, Subtypes, WithType, no, no,
+        Cond, Purity, ClassContext, term.context_init),
     Methods = [PredOrFuncItem | PredOrFuncModeItems].
 split_class_method_types_and_modes(Method0) = [Method] :-
     % Always strip the context from the item -- this is needed
@@ -550,7 +554,7 @@ item_to_item_id_2(Item, MaybeItemId) :-
     ;
         Item = item_pred_decl(ItemPredDecl),
         ItemPredDecl = item_pred_decl_info(_, _, _, _, PredOrFunc, SymName,
-            TypesAndModes, WithType, _, _, _, _, _, _, _),
+            TypesAndModes, _, WithType, _, _, _, _, _, _, _),
         % For predicates or functions defined using `with_type` annotations
         % the arity here won't be correct, but equiv_type.m will record
         % the dependency on the version number with the `incorrect' arity,
@@ -825,13 +829,13 @@ item_is_unchanged(Item1, Item2) = Unchanged :-
     ;
         Item1 = item_pred_decl(ItemPredDecl1),
         ItemPredDecl1 = item_pred_decl_info(_, TVarSet1, _, ExistQVars1,
-            PredOrFunc, Name, TypesAndModes1, WithType1, _,
+            PredOrFunc, Name, TypesAndModes1, _, WithType1, _,
             Det1, Cond, Purity, Constraints1, _, _),
         (
             Item2 = item_pred_decl(ItemPredDecl2),
             ItemPredDecl2 = item_pred_decl_info(_, TVarSet2, _, ExistQVars2,
-                PredOrFunc, Name, TypesAndModes2, WithType2,
-                _, Det2, Cond, Purity, Constraints2, _, _),
+                PredOrFunc, Name, TypesAndModes2, _, WithType2, _,
+                Det2, Cond, Purity, Constraints2, _, _),
 
             % For predicates, ignore the determinism -- the modes and
             % determinism should have been split into a separate declaration.
@@ -1180,10 +1184,10 @@ class_methods_are_unchanged([], []).
 class_methods_are_unchanged([Method1 | Methods1], [Method2 | Methods2]) :-
     (
         Method1 = method_pred_or_func(TVarSet1, _, ExistQVars1, PredOrFunc,
-            Name, TypesAndModes1, WithType1, _,
+            Name, TypesAndModes1, _, WithType1, _,
             Detism, Cond, Purity, Constraints1, _),
         Method2 = method_pred_or_func(TVarSet2, _, ExistQVars2, PredOrFunc,
-            Name, TypesAndModes2, WithType2, _,
+            Name, TypesAndModes2, _, WithType2, _,
             Detism, Cond, Purity, Constraints2, _),
         pred_or_func_type_is_unchanged(TVarSet1, ExistQVars1,
             TypesAndModes1, WithType1, Constraints1,

@@ -599,6 +599,7 @@ add_pragma_reserve_tag(TypeCtor, PragmaStatus, Context, !ModuleInfo, !Specs) :-
                 module_info_set_type_table(TypeTable, !ModuleInfo)
             ;
                 ( TypeBody0 = hlds_eqv_type(_)
+                ; TypeBody0 = hlds_subtype(_, _)
                 ; TypeBody0 = hlds_foreign_type(_)
                 ; TypeBody0 = hlds_solver_type(_, _)
                 ; TypeBody0 = hlds_abstract_type(_)
@@ -666,6 +667,7 @@ add_pragma_foreign_export_enum(FEEInfo, _ImportStatus, Context,
             get_type_defn_body(TypeDefn, TypeBody),
             (
                 ( TypeBody = hlds_eqv_type(_)
+                ; TypeBody = hlds_subtype(_, _)
                 ; TypeBody = hlds_abstract_type(_)
                 ; TypeBody = hlds_solver_type(_, _)
                 ; TypeBody = hlds_foreign_type(_)
@@ -1009,6 +1011,7 @@ add_pragma_foreign_enum(FEInfo, ImportStatus, Context, !ModuleInfo, !Specs) :-
         get_type_defn_body(TypeDefn0, TypeBody0),
         (
             ( TypeBody0 = hlds_eqv_type(_)
+            ; TypeBody0 = hlds_subtype(_, _)
             ; TypeBody0 = hlds_abstract_type(_)
             ; TypeBody0 = hlds_solver_type(_, _)
             ; TypeBody0 = hlds_foreign_type(_)
@@ -1451,7 +1454,7 @@ add_pragma_type_spec_2(TSInfo0, Context, PredId, !ModuleInfo, !QualInfo,
         Subst, TVarSet0, ExpandedItems),
     module_info_pred_info(!.ModuleInfo, PredId, PredInfo0),
     handle_pragma_type_spec_subst(Context, Subst, PredInfo0,
-        TVarSet0, TVarSet, Types, ExistQVars, ClassContext, SubstOk,
+        TVarSet0, TVarSet, Types, Subtypes, ExistQVars, ClassContext, SubstOk,
         !ModuleInfo, !Specs),
     (
         SubstOk = yes(RenamedSubst),
@@ -1542,7 +1545,7 @@ add_pragma_type_spec_2(TSInfo0, Context, PredId, !ModuleInfo, !QualInfo,
             pred_info_get_var_name_remap(PredInfo0, VarNameRemap),
             pred_info_init(ModuleName, SpecName, PredArity, PredOrFunc,
                 Context, Origin, Status, goal_type_none, Markers,
-                Types, TVarSet, ExistQVars, ClassContext, Proofs,
+                Types, Subtypes, TVarSet, ExistQVars, ClassContext, Proofs,
                 ConstraintMap, Clauses, VarNameRemap, NewPredInfo0),
             pred_info_set_procedures(Procs, NewPredInfo0, NewPredInfo),
             module_info_get_predicate_table(!.ModuleInfo, PredTable0),
@@ -1610,12 +1613,14 @@ subst_desc(TVar - Type) = var_to_int(TVar) - Type.
     %
 :- pred handle_pragma_type_spec_subst(prog_context::in,
     assoc_list(tvar, mer_type)::in, pred_info::in, tvarset::in, tvarset::out,
-    list(mer_type)::out, existq_tvars::out, prog_constraints::out,
-    maybe(tsubst)::out, module_info::in, module_info::out,
+    list(mer_type)::out, pred_decl_subtypes::out, existq_tvars::out,
+    prog_constraints::out, maybe(tsubst)::out,
+    module_info::in, module_info::out,
     list(error_spec)::in, list(error_spec)::out) is det.
 
 handle_pragma_type_spec_subst(Context, Subst, PredInfo0, TVarSet0, TVarSet,
-        Types, ExistQVars, ClassContext, SubstOk, !ModuleInfo, !Specs) :-
+        Types, Subtypes, ExistQVars, ClassContext, SubstOk, !ModuleInfo,
+        !Specs) :-
     assoc_list.keys(Subst, VarsToSub),
     (
         Subst = [],
@@ -1630,6 +1635,7 @@ handle_pragma_type_spec_subst(Context, Subst, PredInfo0, TVarSet0, TVarSet,
                 MultiSubstVars, !Specs),
             ExistQVars = [],
             Types = [],
+            Subtypes = pred_decl_no_subtypes,
             ClassContext = constraints([], []),
             varset.init(TVarSet),
             SubstOk = no
@@ -1682,8 +1688,11 @@ handle_pragma_type_spec_subst(Context, Subst, PredInfo0, TVarSet0, TVarSet,
 
                         % Apply the substitution.
                         pred_info_get_arg_types(PredInfo0, Types0),
+                        pred_info_get_subtypes(PredInfo0, Subtypes0),
                         pred_info_get_class_context(PredInfo0, ClassContext0),
                         apply_rec_subst_to_type_list(TypeSubst, Types0, Types),
+                        apply_rec_subst_to_subtypes(TypeSubst,
+                            Subtypes0, Subtypes),
                         apply_rec_subst_to_prog_constraints(TypeSubst,
                             ClassContext0, ClassContext),
                         SubstOk = yes(TypeSubst)
@@ -1692,6 +1701,7 @@ handle_pragma_type_spec_subst(Context, Subst, PredInfo0, TVarSet0, TVarSet,
                         report_subst_existq_tvars(PredInfo0, Context,
                             SubExistQVars, !Specs),
                         Types = [],
+                        Subtypes = pred_decl_no_subtypes,
                         ClassContext = constraints([], []),
                         SubstOk = no
                     )
@@ -1701,6 +1711,7 @@ handle_pragma_type_spec_subst(Context, Subst, PredInfo0, TVarSet0, TVarSet,
                         RecSubstTVars, !Specs),
                     ExistQVars = [],
                     Types = [],
+                    Subtypes = pred_decl_no_subtypes,
                     ClassContext = constraints([], []),
                     varset.init(TVarSet),
                     SubstOk = no
@@ -1711,6 +1722,7 @@ handle_pragma_type_spec_subst(Context, Subst, PredInfo0, TVarSet0, TVarSet,
                     UnknownVarsToSub, !Specs),
                 ExistQVars = [],
                 Types = [],
+                Subtypes = pred_decl_no_subtypes,
                 ClassContext = constraints([], []),
                 varset.init(TVarSet),
                 SubstOk = no
@@ -2705,12 +2717,13 @@ create_tabling_statistics_pred(ProcId, Context, SimpleCallId, SingleProc,
     varset.init(InstVarSet),
     ExistQVars = [],
     Constraints = constraints([], []),
+    Subtypes = pred_decl_no_subtypes,
     WithType = no,
     WithInst = no,
     Condition = cond_true,
     Origin = compiler(pragma_memo_attribute),
     StatsPredDecl = item_pred_decl_info(Origin, VarSet0, InstVarSet,
-        ExistQVars, pf_predicate, StatsPredSymName, ArgDecls,
+        ExistQVars, pf_predicate, StatsPredSymName, ArgDecls, Subtypes,
         WithType, WithInst, yes(detism_det), Condition, purity_pure,
         Constraints, Context, -1),
     StatsPredDeclItem = item_pred_decl(StatsPredDecl),
@@ -2767,12 +2780,13 @@ create_tabling_reset_pred(ProcId, Context, SimpleCallId, SingleProc,
     varset.init(InstVarSet),
     ExistQVars = [],
     Constraints = constraints([], []),
+    Subtypes = pred_decl_no_subtypes,
     WithType = no,
     WithInst = no,
     Condition = cond_true,
     Origin = compiler(pragma_memo_attribute),
     ResetPredDecl = item_pred_decl_info(Origin, VarSet0, InstVarSet,
-        ExistQVars, pf_predicate, ResetPredSymName, ArgDecls,
+        ExistQVars, pf_predicate, ResetPredSymName, ArgDecls, Subtypes,
         WithType, WithInst, yes(detism_det), Condition, purity_pure,
         Constraints, Context, -1),
     ResetPredDeclItem = item_pred_decl(ResetPredDecl),

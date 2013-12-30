@@ -28,6 +28,7 @@
 :- import_module list.
 :- import_module map.
 :- import_module maybe.
+:- import_module set.
 
 %-----------------------------------------------------------------------------%
 
@@ -83,26 +84,59 @@
     --->    eqv_type_body(
                 tvarset,
                 list(type_param),
-                mer_type
+                mer_type,
+                bool                % Is this a subtype definition?
             ).
 
 :- type eqv_map == map(type_ctor, eqv_type_body).
 
-% XXX Should we make equiv_type_info abstract?
-:- type equiv_type_info == maybe(expanded_item_set).
-:- type expanded_item_set.
+%-----------------------------------------------------------------------------%
+
+:- type equiv_type_info.
+
+    % Initialise an equiv_type_info.  We don't expand subtypes or record
+    % expanded items for smart recompilation.
+    %
+:- pred equiv_type_info_init(equiv_type_info::out) is det.
+
+    % Record that a subtype was used.
+    %
+:- pred equiv_type_info_use_subtype_ctor(type_ctor::in,
+    equiv_type_info::in, equiv_type_info::out) is det.
+
+    % Return the set of subtype constructors that were used.
+    %
+:- pred equiv_type_info_get_used_subtype_ctors(equiv_type_info::in,
+    set(type_ctor)::out) is det.
+
+    % Expand all subtypes found in future.
+    %
+:- pred set_expand_subtypes(equiv_type_info::in, equiv_type_info::out) is det.
+
+    % Stop expanding subtypes and clear the used set.
+    %
+:- pred reset_expand_subtypes(equiv_type_info::in, equiv_type_info::out)
+    is det.
 
     % For smart recompilation we need to record which items were expanded
     % in each declaration. Any items which depend on that declaration also
     % depend on the expanded items.
     %
 :- pred maybe_start_recording_expanded_items(module_name::in, sym_name::in,
-    maybe(recompilation_info)::in, equiv_type_info::out) is det.
+    maybe(recompilation_info)::in, equiv_type_info::in, equiv_type_info::out)
+    is det.
 
     % Record all the expanded items in the recompilation_info.
     %
 :- pred finish_recording_expanded_items(item_id::in, equiv_type_info::in,
     maybe(recompilation_info)::in, maybe(recompilation_info)::out) is det.
+
+    % Produce an error message if there are any subtypes used.  This
+    % also empties the used set.
+    %
+:- pred check_no_subtypes(list(format_component)::in, prog_context::in,
+    equiv_type_info::in, equiv_type_info::out,
+    list(error_spec)::in, list(error_spec)::out) is det.
 
 %-----------------------------------------------------------------------------%
 %-----------------------------------------------------------------------------%
@@ -119,7 +153,6 @@
 :- import_module bool.
 :- import_module pair.
 :- import_module require.
-:- import_module set.
 :- import_module term.
 :- import_module varset.
 
@@ -182,12 +215,20 @@ build_eqv_map([Item | Items], !EqvMap, !EqvInstMap) :-
     ;
         (
             Item = item_type_defn(ItemTypeDefn),
-            ItemTypeDefn = item_type_defn_info(VarSet, Name, Args,
-                parse_tree_eqv_type(Body), _, _, _SeqNum)
+            ItemTypeDefn = item_type_defn_info(VarSet, Name, Args, TypeDefn,
+                _, _, _SeqNum),
+            (
+                TypeDefn = parse_tree_eqv_type(Body),
+                IsSubtype = no
+            ;
+                TypeDefn = parse_tree_subtype(Body, _),
+                IsSubtype = yes
+            )
         ->
             list.length(Args, Arity),
             TypeCtor = type_ctor(Name, Arity),
-            map.set(TypeCtor, eqv_type_body(VarSet, Args, Body), !EqvMap)
+            EqvTypeBody = eqv_type_body(VarSet, Args, Body, IsSubtype),
+            map.set(TypeCtor, EqvTypeBody, !EqvMap)
         ;
             Item = item_inst_defn(ItemInstDefn),
             ItemInstDefn = item_inst_defn_info(VarSet, Name, Args,
@@ -412,15 +453,23 @@ replace_in_item(ModuleName, Location, EqvMap, EqvInstMap,
     used_modules::in, used_modules::out, list(error_spec)::out) is det.
 
 replace_in_type_defn_info(ModuleName, Location, EqvMap, EqvInstMap,
-        Info0, Info, !RecompInfo, !UsedModules, Specs) :-
+        Info0, Info, !RecompInfo, !UsedModules, !:Specs) :-
     Info0 = item_type_defn_info(VarSet0, SymName, TArgs, TypeDefn0, Cond,
         Context, SeqNum),
     list.length(TArgs, Arity),
-    maybe_start_recording_expanded_items(ModuleName, SymName, !.RecompInfo,
-        UsedTypeCtors0),
-    replace_in_type_defn(Location, EqvMap, EqvInstMap,
-        type_ctor(SymName, Arity), TypeDefn0, TypeDefn, ContainsCirc,
-        VarSet0, VarSet, UsedTypeCtors0, UsedTypeCtors, !UsedModules),
+    !:Specs = [],
+    some [!EquivTypeInfo] (
+        equiv_type_info_init(!:EquivTypeInfo),
+        maybe_start_recording_expanded_items(ModuleName, SymName, !.RecompInfo,
+            !EquivTypeInfo),
+        replace_in_type_defn(Location, EqvMap, EqvInstMap,
+            type_ctor(SymName, Arity), TypeDefn0, TypeDefn, ContainsCirc,
+            VarSet0, VarSet, !EquivTypeInfo, !UsedModules),
+        ContextPieces = [words("type definitions.")],
+        check_no_subtypes(ContextPieces, Context, !EquivTypeInfo, !Specs),
+        ItemId = item_id(type_body_item, item_name(SymName, Arity)),
+        finish_recording_expanded_items(ItemId, !.EquivTypeInfo, !RecompInfo)
+    ),
     (
         ContainsCirc = yes,
         ( TypeDefn0 = parse_tree_eqv_type(_) ->
@@ -428,16 +477,13 @@ replace_in_type_defn_info(ModuleName, Location, EqvMap, EqvInstMap,
                 sym_name_and_arity(SymName / length(TArgs)), suffix("."), nl],
             Msg = simple_msg(Context, [always(Pieces)]),
             Spec = error_spec(severity_error, phase_expand_types, [Msg]),
-            Specs = [Spec]
+            !:Specs = [Spec | !.Specs]
         ;
             unexpected($module, $pred, "invalid item")
         )
     ;
-        ContainsCirc = no,
-        Specs = []
+        ContainsCirc = no
     ),
-    ItemId = item_id(type_body_item, item_name(SymName, Arity)),
-    finish_recording_expanded_items(ItemId, UsedTypeCtors, !RecompInfo),
     Info = item_type_defn_info(VarSet, SymName, TArgs, TypeDefn, Cond,
         Context, SeqNum).
 
@@ -450,23 +496,28 @@ replace_in_type_defn_info(ModuleName, Location, EqvMap, EqvInstMap,
 replace_in_pred_decl_info(ModuleName, Location, EqvMap, EqvInstMap,
         Info0, Info, !RecompInfo, !UsedModules, Specs) :-
     Info0 = item_pred_decl_info(Origin, TypeVarSet0, InstVarSet, ExistQVars,
-        PredOrFunc, PredName, TypesAndModes0, MaybeWithType0,
+        PredOrFunc, PredName, TypesAndModes0, _, MaybeWithType0,
         MaybeWithInst0, Det0, Cond, Purity, ClassContext0, Context, SeqNum),
-    maybe_start_recording_expanded_items(ModuleName, PredName, !.RecompInfo,
-        ExpandedItems0),
-    replace_in_pred_type(Location, PredName, PredOrFunc, Context, EqvMap,
-        EqvInstMap, ClassContext0, ClassContext,
-        TypesAndModes0, TypesAndModes, TypeVarSet0, TypeVarSet,
-        MaybeWithType0, MaybeWithType, MaybeWithInst0, MaybeWithInst,
-        Det0, Det, ExpandedItems0, ExpandedItems, !UsedModules, Specs),
-    ItemType = pred_or_func_to_item_type(PredOrFunc),
-    list.length(TypesAndModes, Arity),
-    adjust_func_arity(PredOrFunc, OrigArity, Arity),
-    ItemId = item_id(ItemType, item_name(PredName, OrigArity)),
-    finish_recording_expanded_items(ItemId, ExpandedItems, !RecompInfo),
+    some [!EquivTypeInfo] (
+        equiv_type_info_init(!:EquivTypeInfo),
+        maybe_start_recording_expanded_items(ModuleName, PredName,
+            !.RecompInfo, !EquivTypeInfo),
+        replace_in_pred_type(Location, PredName, PredOrFunc, Context, EqvMap,
+            EqvInstMap, ClassContext0, ClassContext,
+            TypesAndModes0, TypesAndModes, Subtypes,
+            TypeVarSet0, TypeVarSet, MaybeWithType0, MaybeWithType,
+            MaybeWithInst0, MaybeWithInst, Det0, Det, !EquivTypeInfo,
+            !UsedModules, Specs),
+        ItemType = pred_or_func_to_item_type(PredOrFunc),
+        list.length(TypesAndModes, Arity),
+        adjust_func_arity(PredOrFunc, OrigArity, Arity),
+        ItemId = item_id(ItemType, item_name(PredName, OrigArity)),
+        finish_recording_expanded_items(ItemId, !.EquivTypeInfo, !RecompInfo)
+    ),
     Info = item_pred_decl_info(Origin, TypeVarSet, InstVarSet, ExistQVars,
-        PredOrFunc, PredName, TypesAndModes, MaybeWithType,
-        MaybeWithInst, Det, Cond, Purity, ClassContext, Context, SeqNum).
+        PredOrFunc, PredName, TypesAndModes, Subtypes,
+        MaybeWithType, MaybeWithInst, Det, Cond, Purity, ClassContext,
+        Context, SeqNum).
 
 :- pred replace_in_mode_decl_info(module_name::in, eqv_type_location::in,
     eqv_map::in, eqv_inst_map::in,
@@ -478,28 +529,32 @@ replace_in_mode_decl_info(ModuleName, Location, _EqvMap, EqvInstMap,
         Info0, Info, !RecompInfo, !UsedModules, Specs) :-
     Info0 = item_mode_decl_info(InstVarSet, MaybePredOrFunc0, PredName,
         Modes0, WithInst0, Det0, Cond, Context, SeqNum),
-    maybe_start_recording_expanded_items(ModuleName, PredName, !.RecompInfo,
-        ExpandedItems0),
-    replace_in_pred_mode(Location, PredName, length(Modes0), Context,
-        mode_decl, EqvInstMap, ExtraModes, MaybePredOrFunc0, MaybePredOrFunc,
-        WithInst0, WithInst, Det0, Det,
-        ExpandedItems0, ExpandedItems, !UsedModules, Specs),
-    (
-        ExtraModes = [],
-        Modes = Modes0
-    ;
-        ExtraModes = [_ | _],
-        Modes = Modes0 ++ ExtraModes
-    ),
-    (
-        MaybePredOrFunc = yes(PredOrFunc),
-        ItemType = pred_or_func_to_item_type(PredOrFunc),
-        list.length(Modes, Arity),
-        adjust_func_arity(PredOrFunc, OrigArity, Arity),
-        ItemId = item_id(ItemType, item_name(PredName, OrigArity)),
-        finish_recording_expanded_items(ItemId, ExpandedItems, !RecompInfo)
-    ;
-        MaybePredOrFunc = no
+    some [!EquivTypeInfo] (
+        equiv_type_info_init(!:EquivTypeInfo),
+        maybe_start_recording_expanded_items(ModuleName, PredName,
+            !.RecompInfo, !EquivTypeInfo),
+        replace_in_pred_mode(Location, PredName, length(Modes0), Context,
+            mode_decl, EqvInstMap, ExtraModes,
+            MaybePredOrFunc0, MaybePredOrFunc, WithInst0, WithInst, Det0, Det,
+            !EquivTypeInfo, !UsedModules, Specs),
+        (
+            ExtraModes = [],
+            Modes = Modes0
+        ;
+            ExtraModes = [_ | _],
+            Modes = Modes0 ++ ExtraModes
+        ),
+        (
+            MaybePredOrFunc = yes(PredOrFunc),
+            ItemType = pred_or_func_to_item_type(PredOrFunc),
+            list.length(Modes, Arity),
+            adjust_func_arity(PredOrFunc, OrigArity, Arity),
+            ItemId = item_id(ItemType, item_name(PredName, OrigArity)),
+            finish_recording_expanded_items(ItemId, !.EquivTypeInfo,
+                !RecompInfo)
+        ;
+            MaybePredOrFunc = no
+        )
     ),
     Info = item_mode_decl_info(InstVarSet, MaybePredOrFunc, PredName,
         Modes, WithInst, Det, Cond, Context, SeqNum).
@@ -511,28 +566,32 @@ replace_in_mode_decl_info(ModuleName, Location, _EqvMap, EqvInstMap,
     used_modules::in, used_modules::out, list(error_spec)::out) is det.
 
 replace_in_typeclass_info(ModuleName, Location, EqvMap, EqvInstMap,
-        Info0, Info, !RecompInfo, !UsedModules, Specs) :-
+        Info0, Info, !RecompInfo, !UsedModules, !:Specs) :-
     Info0 = item_typeclass_info(Constraints0, FunDeps, ClassName, Vars,
         ClassInterface0, VarSet0, Context, SeqNum),
     list.length(Vars, Arity),
-    maybe_start_recording_expanded_items(ModuleName, ClassName, !.RecompInfo,
-        ExpandedItems0),
-    replace_in_prog_constraint_list(Location, EqvMap,
-        Constraints0, Constraints, VarSet0, VarSet,
-        ExpandedItems0, ExpandedItems1, !UsedModules),
-    (
-        ClassInterface0 = class_interface_abstract,
-        ClassInterface = class_interface_abstract,
-        ExpandedItems = ExpandedItems1,
-        Specs = []
-    ;
-        ClassInterface0 = class_interface_concrete(Methods0),
-        replace_in_class_interface(Location, Methods0, EqvMap, EqvInstMap,
-            Methods, ExpandedItems1, ExpandedItems, !UsedModules, [], Specs),
-        ClassInterface = class_interface_concrete(Methods)
+    !:Specs = [],
+    some [!EquivTypeInfo] (
+        equiv_type_info_init(!:EquivTypeInfo),
+        maybe_start_recording_expanded_items(ModuleName, ClassName,
+            !.RecompInfo, !EquivTypeInfo),
+        replace_in_prog_constraint_list(Location, EqvMap,
+            Constraints0, Constraints, VarSet0, VarSet,
+            !EquivTypeInfo, !UsedModules),
+        ContextPieces = [words("typeclass constraints.")],
+        check_no_subtypes(ContextPieces, Context, !EquivTypeInfo, !Specs),
+        (
+            ClassInterface0 = class_interface_abstract,
+            ClassInterface = class_interface_abstract
+        ;
+            ClassInterface0 = class_interface_concrete(Methods0),
+            replace_in_class_interface(Location, Methods0, EqvMap, EqvInstMap,
+                Methods, !EquivTypeInfo, !UsedModules, !Specs),
+            ClassInterface = class_interface_concrete(Methods)
+        ),
+        ItemId = item_id(typeclass_item, item_name(ClassName, Arity)),
+        finish_recording_expanded_items(ItemId, !.EquivTypeInfo, !RecompInfo)
     ),
-    ItemId = item_id(typeclass_item, item_name(ClassName, Arity)),
-    finish_recording_expanded_items(ItemId, ExpandedItems, !RecompInfo),
     Info = item_typeclass_info(Constraints, FunDeps, ClassName, Vars,
         ClassInterface, VarSet, Context, SeqNum).
 
@@ -543,28 +602,34 @@ replace_in_typeclass_info(ModuleName, Location, EqvMap, EqvInstMap,
     used_modules::in, used_modules::out, list(error_spec)::out) is det.
 
 replace_in_instance_info(ModuleName, Location, EqvMap, _EqvInstMap,
-        Info0, Info, !RecompInfo, !UsedModules, []) :-
+        Info0, Info, !RecompInfo, !UsedModules, !:Specs) :-
     Info0 = item_instance_info(Constraints0, ClassName, Types0, OriginalTypes,
         InstanceBody, VarSet0, ContainingModuleName, Context, SeqNum),
-    (
-        ( !.RecompInfo = no
-        ; ContainingModuleName = ModuleName
-        )
-    ->
-        UsedTypeCtors0 = no
-    ;
-        UsedTypeCtors0 = yes(ModuleName - set.init)
+    !:Specs = [],
+    some [!EquivTypeInfo] (
+        equiv_type_info_init(!:EquivTypeInfo),
+        (
+            ( !.RecompInfo = no
+            ; ContainingModuleName = ModuleName
+            )
+        ->
+            true
+        ;
+            start_recording_expanded_items(ModuleName, !EquivTypeInfo)
+        ),
+        replace_in_prog_constraint_list(Location, EqvMap,
+            Constraints0, Constraints, VarSet0, VarSet1,
+            !EquivTypeInfo, !UsedModules),
+        ContextPieces = [words("typeclass constraints.")],
+        check_no_subtypes(ContextPieces, Context, !EquivTypeInfo, !Specs),
+        replace_in_type_list_location_circ(Location, EqvMap, Types0, Types,
+            _, _, VarSet1, VarSet, !EquivTypeInfo, !UsedModules),
+        % We specifically do NOT expand equivalence types in OriginalTypes.
+        % If we did, that would defeat the purpose of the field.
+        list.length(Types0, Arity),
+        ItemId = item_id(typeclass_item, item_name(ClassName, Arity)),
+        finish_recording_expanded_items(ItemId, !.EquivTypeInfo, !RecompInfo)
     ),
-    replace_in_prog_constraint_list(Location, EqvMap,
-        Constraints0, Constraints, VarSet0, VarSet1,
-        UsedTypeCtors0, UsedTypeCtors1, !UsedModules),
-    replace_in_type_list_location_circ(Location, EqvMap, Types0, Types, _, _,
-        VarSet1, VarSet, UsedTypeCtors1, UsedTypeCtors, !UsedModules),
-    % We specifically do NOT expand equivalence types in OriginalTypes.
-    % If we did, that would defeat the purpose of the field.
-    list.length(Types0, Arity),
-    ItemId = item_id(typeclass_item, item_name(ClassName, Arity)),
-    finish_recording_expanded_items(ItemId, UsedTypeCtors, !RecompInfo),
     Info = item_instance_info(Constraints, ClassName, Types, OriginalTypes,
         InstanceBody, VarSet, ContainingModuleName, Context, SeqNum).
 
@@ -575,28 +640,24 @@ replace_in_instance_info(ModuleName, Location, EqvMap, _EqvInstMap,
     used_modules::in, used_modules::out, list(error_spec)::out) is det.
 
 replace_in_pragma_info(ModuleName, Location, EqvMap, _EqvInstMap,
-        Info0, Info, !RecompInfo, !UsedModules, []) :-
+        Info0, Info, !RecompInfo, !UsedModules, !:Specs) :-
     Info0 = item_pragma_info(Origin, Pragma0, Context, SeqNum),
+    !:Specs = [],
     (
         Pragma0 = pragma_type_spec(TypeSpecInfo0),
         TypeSpecInfo0 = pragma_info_type_spec(PredName, NewName, Arity,
             PorF, Modes, Subst0, VarSet0, ItemIds0),
-        (
-            ( !.RecompInfo = no
-            ; PredName = qualified(ModuleName, _)
-            )
-        ->
-            ExpandedItems0 = no
-        ;
-            ExpandedItems0 = yes(ModuleName - ItemIds0)
-        ),
-        replace_in_subst(Location, EqvMap, Subst0, Subst, VarSet0, VarSet,
-            ExpandedItems0, ExpandedItems, !UsedModules),
-        (
-            ExpandedItems = no,
-            ItemIds = ItemIds0
-        ;
-            ExpandedItems = yes(_ - ItemIds)
+        some [!EquivTypeInfo] (
+            equiv_type_info_init(!:EquivTypeInfo),
+            maybe_start_recording_expanded_items(ModuleName, PredName,
+                !.RecompInfo, !EquivTypeInfo),
+            set_expand_subtypes(!EquivTypeInfo),
+            replace_in_subst(Location, EqvMap, Subst0, Subst, VarSet0, VarSet,
+                !EquivTypeInfo, !UsedModules),
+            ContextPieces = [words("pragma type_spec.")],
+            check_no_subtypes(ContextPieces, Context, !EquivTypeInfo, !Specs),
+            set.union(!.EquivTypeInfo ^ eti_expanded_item_set,
+                ItemIds0, ItemIds)
         ),
         TypeSpecInfo = pragma_info_type_spec(PredName, NewName, Arity,
             PorF, Modes, Subst, VarSet, ItemIds),
@@ -606,8 +667,9 @@ replace_in_pragma_info(ModuleName, Location, EqvMap, _EqvInstMap,
         FPInfo0 = pragma_info_foreign_proc(Attrs0, PName, PredOrFunc,
             ProcVars, ProcVarset, ProcInstVarset, ProcImpl),
         some [!EquivTypeInfo] (
+            equiv_type_info_init(!:EquivTypeInfo),
             maybe_start_recording_expanded_items(ModuleName, PName,
-                !.RecompInfo, !:EquivTypeInfo),
+                !.RecompInfo, !EquivTypeInfo),
             UserSharing0 = get_user_annotated_sharing(Attrs0),
             (
                 UserSharing0 = user_sharing(Sharing0, MaybeTypes0),
@@ -677,15 +739,23 @@ replace_in_pragma_info(ModuleName, Location, EqvMap, _EqvInstMap,
     used_modules::in, used_modules::out, list(error_spec)::out) is det.
 
 replace_in_mutable_info(ModuleName, Location, EqvMap, EqvInstMap,
-        Info0, Info, !RecompInfo, !UsedModules, []) :-
+        Info0, Info, !RecompInfo, !UsedModules, !:Specs) :-
     MutName = Info0 ^ mut_name,
     QualName = qualified(ModuleName, MutName),
-    maybe_start_recording_expanded_items(ModuleName, QualName, !.RecompInfo,
-        ExpandedItems0),
-    replace_in_mutable_defn(Location, EqvMap, EqvInstMap, Info0, Info,
-        ExpandedItems0, ExpandedItems, !UsedModules),
-    ItemId = item_id(mutable_item, item_name(QualName, 0)),
-    finish_recording_expanded_items(ItemId, ExpandedItems, !RecompInfo).
+    Context = Info0 ^ mut_context,
+    !:Specs = [],
+    some [!EquivTypeInfo] (
+        equiv_type_info_init(!:EquivTypeInfo),
+        maybe_start_recording_expanded_items(ModuleName, QualName,
+            !.RecompInfo, !EquivTypeInfo),
+        set_expand_subtypes(!EquivTypeInfo),
+        replace_in_mutable_defn(Location, EqvMap, EqvInstMap, Info0, Info,
+            !EquivTypeInfo, !UsedModules),
+        ContextPieces = [words("mutable declaration.")],
+        check_no_subtypes(ContextPieces, Context, !EquivTypeInfo, !Specs),
+        ItemId = item_id(mutable_item, item_name(QualName, 0)),
+        finish_recording_expanded_items(ItemId, !.EquivTypeInfo, !RecompInfo)
+    ).
 
 :- pred replace_in_mutable_defn(eqv_type_location::in,
     eqv_map::in, eqv_inst_map::in,
@@ -694,13 +764,13 @@ replace_in_mutable_info(ModuleName, Location, EqvMap, EqvInstMap,
     used_modules::in, used_modules::out) is det.
 
 replace_in_mutable_defn(Location, EqvMap, EqvInstMap, Info0, Info,
-        !ExpandedItems, !UsedModules) :-
+        !EquivTypeInfo, !UsedModules) :-
     Info0 = item_mutable_info(MutName, Type0, InitValue, Inst0, Attrs, Varset,
         Context, SeqNum),
     TVarSet0 = varset.init,
     replace_in_type_location(Location, EqvMap, Type0, Type, _TypeChanged,
-        TVarSet0, _TVarSet, !ExpandedItems, !UsedModules),
-    replace_in_inst(Location, Inst0, EqvInstMap, Inst, !ExpandedItems,
+        TVarSet0, _TVarSet, !EquivTypeInfo, !UsedModules),
+    replace_in_inst(Location, Inst0, EqvInstMap, Inst, !EquivTypeInfo,
         !UsedModules),
     Info = item_mutable_info(MutName, Type, InitValue, Inst, Attrs, Varset,
         Context, SeqNum).
@@ -765,8 +835,10 @@ replace_in_event_attr(Attr0, Attr, EqvMap, _EqvInstMap,
     Attr0 = event_attribute(AttrNum, AttrName, AttrType0, AttrMode,
         MaybeSynthCall),
     TVarSet0 = varset.init,
+    equiv_type_info_init(EquivTypeInfo),
+    % XXX why don't we record in the recompilation_info?
     replace_in_type_location(eqv_type_out_of_module, EqvMap,
-        AttrType0, AttrType, _Changed, TVarSet0, _TVarSet, no, _EquivTypeInfo,
+        AttrType0, AttrType, _Changed, TVarSet0, _TVarSet, EquivTypeInfo, _,
         !UsedModules),
     Attr = event_attribute(AttrNum, AttrName, AttrType, AttrMode,
         MaybeSynthCall).
@@ -786,6 +858,12 @@ replace_in_type_defn(Location, EqvMap, EqvInstMap, TypeCtor,
             TypeBody0, TypeBody, _, ContainsCirc, !VarSet, !EquivTypeInfo,
             !UsedModules),
         TypeDefn = parse_tree_eqv_type(TypeBody)
+    ;
+        TypeDefn0 = parse_tree_subtype(BaseType0, Inst),
+        replace_in_type_location_2(Location, EqvMap, [TypeCtor],
+            BaseType0, BaseType, _, ContainsCirc, !VarSet, !EquivTypeInfo,
+            !UsedModules),
+        TypeDefn = parse_tree_subtype(BaseType, Inst)
     ;
         TypeDefn0 = parse_tree_du_type(TypeBody0, EqPred, DirectArgFunctors),
         replace_in_ctors_location(Location, EqvMap, TypeBody0, TypeBody,
@@ -898,16 +976,16 @@ replace_in_class_method(Location, EqvMap, EqvInstMap, Method0, Method,
         !EquivTypeInfo, !UsedModules, !Specs) :-
     (
         Method0 = method_pred_or_func(TypeVarSet0, InstVarSet, ExistQVars,
-            PredOrFunc, PredName, TypesAndModes0, WithType0, WithInst0,
+            PredOrFunc, PredName, TypesAndModes0, _, WithType0, WithInst0,
             Det0, Cond, Purity, ClassContext0, Context),
         replace_in_pred_type(Location, PredName, PredOrFunc, Context, EqvMap,
             EqvInstMap, ClassContext0, ClassContext,
-            TypesAndModes0, TypesAndModes, TypeVarSet0, TypeVarSet,
-            WithType0, WithType, WithInst0, WithInst, Det0, Det,
-            !EquivTypeInfo, !UsedModules, NewSpecs),
+            TypesAndModes0, TypesAndModes, Subtypes,
+            TypeVarSet0, TypeVarSet, WithType0, WithType, WithInst0, WithInst,
+            Det0, Det, !EquivTypeInfo, !UsedModules, NewSpecs),
         !:Specs = NewSpecs ++ !.Specs,
         Method = method_pred_or_func(TypeVarSet, InstVarSet, ExistQVars,
-            PredOrFunc, PredName, TypesAndModes, WithType, WithInst,
+            PredOrFunc, PredName, TypesAndModes, Subtypes, WithType, WithInst,
             Det, Cond, Purity, ClassContext, Context)
     ;
         Method0 = method_pred_or_func_mode(InstVarSet, MaybePredOrFunc0,
@@ -1201,42 +1279,64 @@ replace_type_ctor(Location, EqvMap, TypeCtorsAlreadyExpanded, Type0,
         AlreadyExpanded = no
     ),
     (
-        map.search(EqvMap, TypeCtor, eqv_type_body(EqvVarSet, Args0, Body0)),
-
-        % Don't merge in the variable names from the type declaration to avoid
-        % creating multiple variables with the same name so that
-        % `varset.create_name_var_map' can be used on the resulting tvarset.
-        % make_hlds uses `varset.create_name_var_map' to match up type
-        % variables in `:- pragma type_spec' declarations and explicit type
-        % qualifications with the type variables in the predicate's
-        % declaration.
-
-        tvarset_merge_renaming_without_names(!.VarSet, EqvVarSet, !:VarSet,
-            Renaming),
+        map.search(EqvMap, TypeCtor, EqvTypeBody),
         !.Circ = no,
         AlreadyExpanded = no
     ->
-        type_ctor_used_modules(Location, TypeCtor, !UsedModules),
+        EqvTypeBody = eqv_type_body(EqvVarSet, Args0, Body0, IsSubtype),
+        (
+            IsSubtype = yes,
+            equiv_type_info_use_subtype_ctor(TypeCtor, !EquivTypeInfo)
+        ;
+            IsSubtype = no
+        ),
+        (
+            IsSubtype = yes,
+            !.EquivTypeInfo ^ eti_expand_subtypes = no
+        ->
+            Type1 = Type0,
+            Done = no
+        ;
+            !:Changed = yes,
+            type_ctor_used_modules(Location, TypeCtor, !UsedModules),
 
-        !:Changed = yes,
-        map.apply_to_list(Args0, Renaming, Args),
-        apply_variable_renaming_to_type(Renaming, Body0, Body1),
-        TypeCtorItem = type_ctor_to_item_name(TypeCtor),
-        record_expanded_item(item_id(type_abstract_item, TypeCtorItem),
-            !EquivTypeInfo),
-        map.from_corresponding_lists(Args, TArgs, Subst),
-        apply_subst_to_type(Subst, Body1, Body),
-        replace_in_type_location_2(Location, EqvMap,
-            [TypeCtor | TypeCtorsAlreadyExpanded], Body,
-            Type, _, !:Circ, !VarSet, !EquivTypeInfo, !UsedModules)
+            % Don't merge in the variable names from the type declaration to
+            % avoid creating multiple variables with the same name so that
+            % `varset.create_name_var_map' can be used on the resulting
+            % tvarset.  make_hlds uses `varset.create_name_var_map' to match
+            % up type variables in `:- pragma type_spec' declarations and
+            % explicit type qualifications with the type variables in the
+            % predicate's declaration.
+            tvarset_merge_renaming_without_names(!.VarSet, EqvVarSet, !:VarSet,
+                Renaming),
+            map.apply_to_list(Args0, Renaming, Args),
+            apply_variable_renaming_to_type(Renaming, Body0, Body1),
+            TypeCtorItem = type_ctor_to_item_name(TypeCtor),
+            record_expanded_item(item_id(type_abstract_item, TypeCtorItem),
+                !EquivTypeInfo),
+            map.from_corresponding_lists(Args, TArgs, Subst),
+            apply_subst_to_type(Subst, Body1, Body),
+            replace_in_type_location_2(Location, EqvMap,
+                [TypeCtor | TypeCtorsAlreadyExpanded], Body,
+                Type1, _, !:Circ, !VarSet, !EquivTypeInfo, !UsedModules),
+            Done = yes
+        )
     ;
+        Type1 = Type0,
+        Done = no
+    ),
+    (
+        Done = yes,
+        Type = Type1
+    ;
+        Done = no,
         (
             !.Changed = yes,
             TypeCtor = type_ctor(SymName, _Arity),
             Type = defined_type(SymName, TArgs, Kind)
         ;
             !.Changed = no,
-            Type = Type0
+            Type = Type1
         ),
         bool.or(AlreadyExpanded, !Circ)
     ).
@@ -1300,7 +1400,7 @@ replace_in_inst_location(Location, Inst0, EqvInstMap, ExpandedInstIds, Inst,
     pred_or_func::in, prog_context::in, eqv_map::in, eqv_inst_map::in,
     prog_constraints::in, prog_constraints::out,
     list(type_and_mode)::in, list(type_and_mode)::out,
-    tvarset::in, tvarset::out,
+    pred_decl_subtypes::out, tvarset::in, tvarset::out,
     maybe(mer_type)::in, maybe(mer_type)::out,
     maybe(mer_inst)::in, maybe(mer_inst)::out,
     maybe(determinism)::in, maybe(determinism)::out,
@@ -1309,12 +1409,15 @@ replace_in_inst_location(Location, Inst0, EqvInstMap, ExpandedInstIds, Inst,
 
 replace_in_pred_type(Location, PredName, PredOrFunc, Context,
         EqvMap, EqvInstMap, ClassContext0, ClassContext,
-        TypesAndModes0, TypesAndModes, !TypeVarSet,
+        TypesAndModes0, TypesAndModes, Subtypes, !TypeVarSet,
         MaybeWithType0, MaybeWithType, MaybeWithInst0, MaybeWithInst,
         !Det, !EquivTypeInfo, !UsedModules, !:Specs) :-
     replace_in_prog_constraints_location(Location, EqvMap,
         ClassContext0, ClassContext, !TypeVarSet,
         !EquivTypeInfo, !UsedModules),
+    ProgConstraintsPieces = [words("typeclass constraints.")],
+    check_no_subtypes(ProgConstraintsPieces, Context, !EquivTypeInfo,
+        [], !:Specs),
     replace_in_tms(Location, EqvMap, TypesAndModes0, TypesAndModes1,
         !TypeVarSet, !EquivTypeInfo, !UsedModules),
     (
@@ -1325,8 +1428,7 @@ replace_in_pred_type(Location, PredName, PredOrFunc, Context,
             type_is_higher_order_details(WithType, _Purity, PredOrFunc,
                 _EvalMethod, ExtraTypesPrime)
         ->
-            ExtraTypes = ExtraTypesPrime,
-            !:Specs = []
+            ExtraTypes = ExtraTypesPrime
         ;
             ExtraTypes = [],
             Pieces1 = [words("In type declaration for"),
@@ -1335,12 +1437,11 @@ replace_in_pred_type(Location, PredName, PredOrFunc, Context,
                 words("type after `with_type`."), nl],
             Msg1 = simple_msg(Context, [always(Pieces1)]),
             Spec1 = error_spec(severity_error, phase_expand_types, [Msg1]),
-            !:Specs = [Spec1]
+            !:Specs = [Spec1 | !.Specs]
         )
     ;
         MaybeWithType0 = no,
-        ExtraTypes = [],
-        !:Specs = []
+        ExtraTypes = []
     ),
 
     replace_in_pred_mode(Location, PredName, length(TypesAndModes0),
@@ -1390,13 +1491,26 @@ replace_in_pred_type(Location, PredName, PredOrFunc, Context,
     ),
     (
         ExtraTypesAndModes = [],
-        TypesAndModes = TypesAndModes1
+        TypesAndModes2 = TypesAndModes1
     ;
         ExtraTypesAndModes = [_ | _],
         OrigItemId = item_id(pred_or_func_to_item_type(PredOrFunc),
             item_name(PredName, list.length(TypesAndModes0))),
         record_expanded_item(OrigItemId, !EquivTypeInfo),
-        TypesAndModes = TypesAndModes1 ++ ExtraTypesAndModes
+        TypesAndModes2 = TypesAndModes1 ++ ExtraTypesAndModes
+    ),
+    SubtypeCtors = !.EquivTypeInfo ^ eti_used_subtype_ctors,
+    ( set.empty(SubtypeCtors) ->
+        Subtypes = pred_decl_no_subtypes,
+        TypesAndModes = TypesAndModes2
+    ;
+        ArgSubtypes = list.map(type_and_mode_to_type, TypesAndModes2),
+        Subtypes = pred_decl_subtypes(SubtypeCtors, ArgSubtypes),
+        % Expand again, this time also expanding subtypes.
+        set_expand_subtypes(!EquivTypeInfo),
+        replace_in_tms(Location, EqvMap, TypesAndModes2, TypesAndModes,
+            !TypeVarSet, !EquivTypeInfo, !UsedModules),
+        reset_expand_subtypes(!EquivTypeInfo)
     ).
 
 :- pred replace_in_pred_mode(eqv_type_location::in, sym_name::in, arity::in,
@@ -1552,43 +1666,104 @@ replace_in_unit_selector(Location, EqvMap, TVarset,
 
 %-----------------------------------------------------------------------------%
 
-:- type expanded_item_set == pair(module_name, set(item_id)).
+:- type equiv_type_info
+    --->    equiv_type_info(
+                % Do we expand subtypes on this pass?
+                eti_expand_subtypes         :: bool,
 
-maybe_start_recording_expanded_items(_, _, no, no).
-maybe_start_recording_expanded_items(ModuleName, SymName, yes(_), MaybeInfo) :-
+                % Set of subtype constructors that were encountered.
+                eti_used_subtype_ctors      :: set(type_ctor),
+
+                % If yes, record non-local expanded items for smart
+                % recompilation.  We don't need to record items local to the
+                % given module.
+                eti_maybe_expand_nonlocal   :: maybe(module_name),
+
+                % Set of expanded items that were recorded.
+                eti_expanded_item_set       :: set(item_id)
+            ).
+
+equiv_type_info_init(EquivTypeInfo) :-
+    EquivTypeInfo = equiv_type_info(no, set.init, no, set.init).
+
+equiv_type_info_use_subtype_ctor(TypeCtor, !EquivTypeInfo) :-
+    !EquivTypeInfo ^ eti_used_subtype_ctors :=
+        set.insert(!.EquivTypeInfo ^ eti_used_subtype_ctors, TypeCtor).
+
+equiv_type_info_get_used_subtype_ctors(EquivTypeInfo,
+        EquivTypeInfo ^ eti_used_subtype_ctors).
+
+set_expand_subtypes(!EquivTypeInfo) :-
+    !EquivTypeInfo ^ eti_expand_subtypes := yes.
+
+reset_expand_subtypes(!EquivTypeInfo) :-
+    !EquivTypeInfo ^ eti_expand_subtypes := no,
+    !EquivTypeInfo ^ eti_used_subtype_ctors := set.init.
+
+maybe_start_recording_expanded_items(_, _, no, !EquivTypeInfo).
+maybe_start_recording_expanded_items(ModuleName, SymName, yes(_),
+        !EquivTypeInfo) :-
     ( SymName = qualified(ModuleName, _) ->
-        MaybeInfo = no
+        true
     ;
-        MaybeInfo = yes(ModuleName - set.init)
+        start_recording_expanded_items(ModuleName, !EquivTypeInfo)
     ).
+
+:- pred start_recording_expanded_items(module_name::in,
+    equiv_type_info::in, equiv_type_info::out) is det.
+
+start_recording_expanded_items(ModuleName, !EquivTypeInfo) :-
+    !EquivTypeInfo ^ eti_maybe_expand_nonlocal := yes(ModuleName),
+    !EquivTypeInfo ^ eti_expanded_item_set := set.init.
 
 :- pred record_expanded_item(item_id::in,
     equiv_type_info::in, equiv_type_info::out) is det.
 
-record_expanded_item(Item, !EquivTypeInfo) :-
-    map_maybe(record_expanded_item_2(Item), !EquivTypeInfo).
-
-:- pred record_expanded_item_2(item_id::in,
-    expanded_item_set::in, expanded_item_set::out) is det.
-
-record_expanded_item_2(ItemId, ExpandedItemSet0, ExpandedItemSet) :-
-    ExpandedItemSet0 = ModuleName - Items0,
-    ItemId = item_id(_, ItemName),
-    ( ItemName = item_name(qualified(ModuleName, _), _) ->
-        % We don't need to record local types.
-        ExpandedItemSet = ExpandedItemSet0
+record_expanded_item(ItemId, !EquivTypeInfo) :-
+    MaybeExpand = !.EquivTypeInfo ^ eti_maybe_expand_nonlocal,
+    (
+        MaybeExpand = no
     ;
-        set.insert(ItemId, Items0, Items),
-        ExpandedItemSet = ModuleName - Items
+        MaybeExpand = yes(ModuleName),
+        ItemId = item_id(_, ItemName),
+        ( ItemName = item_name(qualified(ModuleName, _), _) ->
+            % We don't need to record local types.
+            true
+        ;
+            Items0 = !.EquivTypeInfo ^ eti_expanded_item_set,
+            set.insert(ItemId, Items0, Items),
+            !EquivTypeInfo ^ eti_expanded_item_set := Items
+        )
     ).
 
-finish_recording_expanded_items(_, no, no, no).
-finish_recording_expanded_items(_, no, yes(Info), yes(Info)).
-finish_recording_expanded_items(_, yes(_), no, _) :-
-    unexpected($module, $pred, "items but no info").
-finish_recording_expanded_items(Item, yes(_ - ExpandedItems),
-        yes(Info0), yes(Info)) :-
-    recompilation.record_expanded_items(Item, ExpandedItems, Info0, Info).
+finish_recording_expanded_items(Item, EquivTypeInfo, !MaybeRecompInfo) :-
+    MaybeExpand = EquivTypeInfo ^ eti_maybe_expand_nonlocal,
+    (
+        MaybeExpand = no
+    ;
+        MaybeExpand = yes(_),
+        (
+            !.MaybeRecompInfo = no,
+            unexpected($module, $pred, "items but no info")
+        ;
+            !.MaybeRecompInfo = yes(RecompInfo0),
+            recompilation.record_expanded_items(Item,
+                EquivTypeInfo ^ eti_expanded_item_set,
+                RecompInfo0, RecompInfo),
+            !:MaybeRecompInfo = yes(RecompInfo)
+        )
+    ).
+
+check_no_subtypes(ContextPieces, Context, !EquivTypeInfo, !Specs) :-
+    ( set.empty(!.EquivTypeInfo ^ eti_used_subtype_ctors) ->
+        true
+    ;
+        Pieces = [words("Error: subtypes not allowed in") | ContextPieces],
+        Spec = error_spec(severity_error, phase_term_to_parse_tree,
+            [simple_msg(Context, [always(Pieces)])]),
+        !:Specs = [Spec | !.Specs],
+        !EquivTypeInfo ^ eti_used_subtype_ctors := set.init
+    ).
 
 %-----------------------------------------------------------------------------%
 :- end_module equiv_type.

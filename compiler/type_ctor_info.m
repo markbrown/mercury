@@ -337,18 +337,6 @@ construct_type_ctor_info(TypeCtorGenInfo, ModuleInfo, RttiData) :-
             TypeBody = hlds_abstract_type(_),
             unexpected($module, $pred, "abstract_type")
         ;
-            % We treat solver_types as being equivalent to their representation
-            % types for RTTI purposes. Which may cause problems with construct,
-            % similar to those for abstract types.
-            TypeBody = hlds_solver_type(SolverTypeDetails, _MaybeUserEqComp),
-            RepnType = SolverTypeDetails ^ std_representation_type,
-            % There can be no existentially typed args to an equivalence.
-            UnivTvars = TypeArity,
-            ExistTvars = [],
-            pseudo_type_info.construct_maybe_pseudo_type_info(RepnType,
-                UnivTvars, ExistTvars, MaybePseudoTypeInfo),
-            Details = tcd_eqv(MaybePseudoTypeInfo)
-        ;
             TypeBody = hlds_foreign_type(ForeignBody),
             foreign_type_body_to_exported_type(ModuleInfo, ForeignBody, _, _,
                 Assertions),
@@ -362,7 +350,18 @@ construct_type_ctor_info(TypeCtorGenInfo, ModuleInfo, RttiData) :-
             ),
             Details = tcd_foreign(IsStable)
         ;
-            TypeBody = hlds_eqv_type(Type),
+            % We treat subtypes and solver types as being equivalent to their
+            % base or representation types, respectively, for RTTI purposes.
+            % This may cause problems with construct, similar to those for
+            % abstract types.
+            (
+                TypeBody = hlds_eqv_type(Type)
+            ;
+                TypeBody = hlds_subtype(Type, _)
+            ;
+                TypeBody = hlds_solver_type(SolverTypeDetails, _),
+                Type = SolverTypeDetails ^ std_representation_type
+            ),
             % There can be no existentially typed args to an equivalence.
             UnivTvars = TypeArity,
             ExistTvars = [],
@@ -417,6 +416,7 @@ construct_type_ctor_info(TypeCtorGenInfo, ModuleInfo, RttiData) :-
             )
         ;
             ( TypeBody = hlds_eqv_type(_)
+            ; TypeBody = hlds_subtype(_, _)
             ; TypeBody = hlds_foreign_type(_)
             ; TypeBody = hlds_solver_type(_, _)
             ; TypeBody = hlds_abstract_type(_)

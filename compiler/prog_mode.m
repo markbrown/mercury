@@ -308,7 +308,7 @@ inst_apply_substitution(Subst, Inst0, Inst) :-
     (
         ( Inst0 = not_reached
         ; Inst0 = free
-        ; Inst0 = free(_)
+        ; Inst0 = free(_, _)
         ),
         Inst = Inst0
     ;
@@ -382,11 +382,11 @@ inst_name_apply_substitution(Subst, InstName0, InstName) :-
         inst_list_apply_substitution_2(Subst, ArgInsts0, ArgInsts),
         InstName = user_inst(Name, ArgInsts)
     ;
-        InstName0 = typed_inst(T, SubInst0),
+        InstName0 = typed_inst(T, SubInst0, PropCtors),
         inst_name_apply_substitution(Subst, SubInst0, SubInst),
-        InstName = typed_inst(T, SubInst)
+        InstName = typed_inst(T, SubInst, PropCtors)
     ;
-        InstName0 = typed_ground(_Uniq, _T),
+        InstName0 = typed_ground(_Uniq, _T, _P),
         % XXX Why is this here? The caller would do the same thing
         % if it wasn't here.
         InstName = InstName0
@@ -457,7 +457,7 @@ rename_apart_inst_vars_in_inst(Sub, Inst0, Inst) :-
     (
         ( Inst0 = not_reached
         ; Inst0 = free
-        ; Inst0 = free(_)
+        ; Inst0 = free(_, _)
         ),
         Inst = Inst0
     ;
@@ -543,11 +543,11 @@ rename_apart_inst_vars_in_inst_name(Sub, InstName0, InstName) :-
         list.map(rename_apart_inst_vars_in_inst(Sub), Insts0, Insts),
         InstName = user_inst(Sym, Insts)
     ;
-        InstName0 = typed_inst(Type, Name0),
+        InstName0 = typed_inst(Type, Name0, PropCtors),
         rename_apart_inst_vars_in_inst_name(Sub, Name0, Name),
-        InstName = typed_inst(Type, Name)
+        InstName = typed_inst(Type, Name, PropCtors)
     ;
-        InstName0 = typed_ground(_U, _T),
+        InstName0 = typed_ground(_U, _T, _P),
         % XXX Why is this here? The caller would do the same thing
         % if it wasn't here.
         InstName = InstName0
@@ -560,7 +560,7 @@ inst_contains_unconstrained_var(Inst) :-
     (
         ( Inst = not_reached
         ; Inst = free
-        ; Inst = free(_)
+        ; Inst = free(_, _)
         ),
         fail
     ;
@@ -641,7 +641,7 @@ inst_name_contains_unconstrained_var(InstName) :-
         InstName = mostly_uniq_inst(SubInstName),
         inst_name_contains_unconstrained_var(SubInstName)
     ;
-        InstName = typed_inst(_, SubInstName),
+        InstName = typed_inst(_, SubInstName, _),
         inst_name_contains_unconstrained_var(SubInstName)
     ).
 
@@ -683,7 +683,7 @@ get_arg_insts(Inst, ConsId, Arity, ArgInsts) :-
         )
     ;
         ( Inst = free
-        ; Inst = free(_)
+        ; Inst = free(_, _)
         ),
         list.duplicate(Arity, free, ArgInsts)
     ;
@@ -760,7 +760,7 @@ strip_builtin_qualifiers_from_inst(Inst0, Inst) :-
         ( Inst0 = inst_var(_)
         ; Inst0 = not_reached
         ; Inst0 = free
-        ; Inst0 = free(_)
+        ; Inst0 = free(_, _)
         ),
         Inst = Inst0
     ;
@@ -841,12 +841,12 @@ strip_builtin_qualifiers_from_inst_name(Inst0, Inst) :-
         strip_builtin_qualifiers_from_inst_name(InstName0, InstName),
         Inst = mostly_uniq_inst(InstName)
     ;
-        Inst0 = typed_ground(_Uniq, _Type),
+        Inst0 = typed_ground(_Uniq, _Type, _PropCtors),
         Inst = Inst0
     ;
-        Inst0 = typed_inst(Type, InstName0),
+        Inst0 = typed_inst(Type, InstName0, PropCtors),
         strip_builtin_qualifiers_from_inst_name(InstName0, InstName),
-        Inst = typed_inst(Type, InstName)
+        Inst = typed_inst(Type, InstName, PropCtors)
     ).
 
 :- pred strip_builtin_qualifiers_from_ho_inst_info(ho_inst_info::in,
@@ -888,7 +888,7 @@ constrain_inst_vars_in_inst(InstConstraints, Inst0, Inst) :-
     (
         ( Inst0 = not_reached
         ; Inst0 = free
-        ; Inst0 = free(_)
+        ; Inst0 = free(_, _)
         ; Inst0 = ground(_Uniq, none)
         ; Inst0 = any(_Uniq, none)
         ),
@@ -1023,7 +1023,7 @@ inst_var_constraints_are_consistent_in_insts(Insts, !Sub) :-
 inst_var_constraints_are_consistent_in_inst(Inst, !Sub) :-
     (
         ( Inst = free
-        ; Inst = free(_)
+        ; Inst = free(_, _)
         ; Inst = not_reached
         )
     ;

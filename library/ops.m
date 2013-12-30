@@ -423,6 +423,7 @@ ops.op_table(Op, Info, OtherInfos) :-
         ; Op = "promise",           Info = op_info(prefix(x), 1199)
         ; Op = "semipure",          Info = op_info(prefix(y), 800)
         ; Op = "solver",            Info = op_info(prefix(y), 1181)
+        ; Op = "subtype",           Info = op_info(prefix(x), 1199)
         ; Op = "type",              Info = op_info(prefix(x), 1180)
         ; Op = "typeclass",         Info = op_info(prefix(x), 1199)
         ; Op = "use_module",        Info = op_info(prefix(x), 1199)

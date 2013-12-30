@@ -284,7 +284,7 @@ is_class_method_mode_item(Method) :-
 add_class_pred_or_func_mode_method(Name, Vars, Status, Method,
         !PredProcIds, !ModuleInfo, !Specs) :-
     (
-        Method = method_pred_or_func(_, _, _, _, _, _, _, _, _, _, _, _, _),
+        Method = method_pred_or_func(_, _, _, _, _, _, _, _, _, _, _, _, _, _),
         unexpected($module, $pred, "pred_or_func method item")
     ;
         Method = method_pred_or_func_mode(_VarSet, MaybePredOrFunc, PredName,
@@ -353,8 +353,8 @@ module_add_class_method(Method, Name, Vars, Status, MaybePredIdProcId,
         !ModuleInfo, !Specs) :-
     (
         Method = method_pred_or_func(TypeVarSet, InstVarSet, ExistQVars,
-            PredOrFunc, PredName, TypesAndModes, _WithType, _WithInst,
-            MaybeDet, _Cond, Purity, ClassContext, Context),
+            PredOrFunc, PredName, TypesAndModes, Subtypes, _WithType,
+            _WithInst, MaybeDet, _Cond, Purity, ClassContext, Context),
         % XXX kind inference:
         % We set the kinds to `star' at the moment.  This will be different
         % when we have a kind system.
@@ -365,8 +365,9 @@ module_add_class_method(Method, Name, Vars, Status, MaybePredIdProcId,
         init_markers(Markers0),
         add_marker(marker_class_method, Markers0, Markers),
         module_add_pred_or_func(TypeVarSet, InstVarSet, ExistQVars, PredOrFunc,
-            PredName, TypesAndModes, MaybeDet, Purity, NewClassContext,
-            Markers, Context, Status, MaybePredIdProcId, !ModuleInfo, !Specs)
+            PredName, TypesAndModes, Subtypes, MaybeDet, Purity,
+            NewClassContext, Markers, Context, Status, MaybePredIdProcId,
+            !ModuleInfo, !Specs)
     ;
         Method = method_pred_or_func_mode(VarSet, MaybePredOrFunc, PredName,
             Modes, _WithInst, MaybeDet, _Cond, Context),
@@ -401,7 +402,7 @@ check_method_modes([], !PredProcIds, !ModuleInfo, !Specs).
 check_method_modes([Method | Methods], !PredProcIds, !ModuleInfo, !Specs) :-
     (
         Method = method_pred_or_func(_, _, _, PorF, QualName, TypesAndModes,
-            _WithType, _WithInst, _, _, _, _, _),
+            _, _WithType, _WithInst, _, _, _, _, _),
         (
             QualName = qualified(ModuleName0, Name0),
             ModuleName = ModuleName0,

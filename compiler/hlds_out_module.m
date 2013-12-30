@@ -351,6 +351,13 @@ write_type_body(Info, TypeCtor, TypeBody, Indent, TVarSet, !IO) :-
         mercury_output_type(TVarSet, no, Type, !IO),
         io.write_string(".\n", !IO)
     ;
+        TypeBody = hlds_subtype(BaseType, Inst),
+        io.write_string(" < ", !IO),
+        mercury_output_type(TVarSet, no, BaseType, !IO),
+        io.write_string(" :: ", !IO),
+        mercury_output_inst(Inst, varset.init, !IO),
+        io.write_string(".\n", !IO)
+    ;
         TypeBody = hlds_abstract_type(_IsSolverType),
         io.write_string(".\n", !IO)
     ;

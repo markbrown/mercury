@@ -82,6 +82,20 @@
 
 %-----------------------------------------------------------------------------%
 %
+% Utility predicates dealing with subtypes.
+%
+
+:- pred apply_variable_renaming_to_subtypes(tvar_renaming::in,
+    pred_decl_subtypes::in, pred_decl_subtypes::out) is det.
+
+:- pred apply_subst_to_subtypes(tsubst::in,
+    pred_decl_subtypes::in, pred_decl_subtypes::out) is det.
+
+:- pred apply_rec_subst_to_subtypes(tsubst::in,
+    pred_decl_subtypes::in, pred_decl_subtypes::out) is det.
+
+%-----------------------------------------------------------------------------%
+%
 % Utility predicates dealing with typeclass constraints.
 %
 
@@ -402,6 +416,36 @@ ensure_type_has_kind(Kind, Type0, Type) :-
         Type = Type0
     ;
         unexpected($module, $pred, "substitution not kind preserving")
+    ).
+
+%-----------------------------------------------------------------------------%
+
+apply_variable_renaming_to_subtypes(Renaming, !Subtypes) :-
+    (
+        !.Subtypes = pred_decl_no_subtypes
+    ;
+        !.Subtypes = pred_decl_subtypes(SubtypeCtors, ArgSubtypes0),
+        apply_variable_renaming_to_type_list(Renaming,
+            ArgSubtypes0, ArgSubtypes),
+        !:Subtypes = pred_decl_subtypes(SubtypeCtors, ArgSubtypes)
+    ).
+
+apply_subst_to_subtypes(Subst, !Subtypes) :-
+    (
+        !.Subtypes = pred_decl_no_subtypes
+    ;
+        !.Subtypes = pred_decl_subtypes(SubtypeCtors, ArgSubtypes0),
+        apply_subst_to_type_list(Subst, ArgSubtypes0, ArgSubtypes),
+        !:Subtypes = pred_decl_subtypes(SubtypeCtors, ArgSubtypes)
+    ).
+
+apply_rec_subst_to_subtypes(Subst, !Subtypes) :-
+    (
+        !.Subtypes = pred_decl_no_subtypes
+    ;
+        !.Subtypes = pred_decl_subtypes(SubtypeCtors, ArgSubtypes0),
+        apply_rec_subst_to_type_list(Subst, ArgSubtypes0, ArgSubtypes),
+        !:Subtypes = pred_decl_subtypes(SubtypeCtors, ArgSubtypes)
     ).
 
 %-----------------------------------------------------------------------------%

@@ -1102,6 +1102,7 @@ get_ptag_counts(Type, ModuleInfo, MaxPrimary, PtagCountMap) :-
         assoc_list.values(ConsList, TagList)
     ;
         ( TypeBody = hlds_eqv_type(_)
+        ; TypeBody = hlds_subtype(_, _)
         ; TypeBody = hlds_foreign_type(_)
         ; TypeBody = hlds_solver_type(_, _)
         ; TypeBody = hlds_abstract_type(_)

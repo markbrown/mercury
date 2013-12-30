@@ -92,7 +92,7 @@ add_solver_type_decl_items(TVarSet, TypeSymName, TypeParams,
 
     InstVarSet        = varset.init,
     ExistQTVars       = [],
-
+    Subtypes          = pred_decl_no_subtypes,
     init_markers(NoMarkers),
 
     % Insert the conversion function declarations.
@@ -106,7 +106,7 @@ add_solver_type_decl_items(TVarSet, TypeSymName, TypeParams,
         [type_and_mode(SolverType, in_mode      ),
          type_and_mode(RepnType,   OutGroundMode)],
     module_add_pred_or_func(TVarSet, InstVarSet, ExistQTVars, pf_function,
-        ToGroundRepnSymName, ToGroundRepnArgTypes, yes(detism_det),
+        ToGroundRepnSymName, ToGroundRepnArgTypes, Subtypes, yes(detism_det),
         purity_impure, constraints([], []), NoMarkers, Context, !.Status, _,
         !ModuleInfo, !Specs),
 
@@ -119,7 +119,7 @@ add_solver_type_decl_items(TVarSet, TypeSymName, TypeParams,
         [type_and_mode(SolverType, in_any_mode ),
          type_and_mode(RepnType,   OutAnyMode)],
     module_add_pred_or_func(TVarSet, InstVarSet, ExistQTVars, pf_function,
-        ToAnyRepnSymName, ToAnyRepnArgTypes, yes(detism_det),
+        ToAnyRepnSymName, ToAnyRepnArgTypes, Subtypes, yes(detism_det),
         purity_impure, constraints([], []), NoMarkers, Context, !.Status, _,
         !ModuleInfo, !Specs),
 
@@ -132,9 +132,9 @@ add_solver_type_decl_items(TVarSet, TypeSymName, TypeParams,
         [type_and_mode(RepnType,   InGroundMode   ),
          type_and_mode(SolverType, out_mode       )],
     module_add_pred_or_func(TVarSet, InstVarSet, ExistQTVars, pf_function,
-        FromGroundRepnSymName, FromGroundRepnArgTypes, yes(detism_det),
-        purity_impure, constraints([], []), NoMarkers, Context, !.Status, _,
-        !ModuleInfo, !Specs),
+        FromGroundRepnSymName, FromGroundRepnArgTypes, Subtypes,
+        yes(detism_det), purity_impure, constraints([], []), NoMarkers,
+        Context, !.Status, _, !ModuleInfo, !Specs),
 
         % The `:- impure
         %   func 'representation to any st'(rt::in(ai)) =
@@ -145,7 +145,7 @@ add_solver_type_decl_items(TVarSet, TypeSymName, TypeParams,
         [type_and_mode(RepnType,   InAnyMode   ),
          type_and_mode(SolverType, out_any_mode)],
     module_add_pred_or_func(TVarSet, InstVarSet, ExistQTVars, pf_function,
-        FromAnyRepnSymName, FromAnyRepnArgTypes, yes(detism_det),
+        FromAnyRepnSymName, FromAnyRepnArgTypes, Subtypes, yes(detism_det),
         purity_impure, constraints([], []), NoMarkers, Context, !.Status, _,
         !ModuleInfo, !Specs).
 

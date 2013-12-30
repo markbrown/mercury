@@ -31,6 +31,11 @@
 :- pred parse_type_defn(module_name::in, varset::in, term::in, decl_attrs::in,
     prog_context::in, int::in, maybe1(item)::out) is det.
 
+    % Parse the definition of a subtype.
+    %
+:- pred parse_subtype_defn(module_name::in, varset::in, term::in,
+    decl_attrs::in, prog_context::in, int::in, maybe1(item)::out) is det.
+
     % parse_type_defn_head(ModuleName, VarSet, Head, HeadResult):
     %
     % Check the head of a type definition for errors.
@@ -57,6 +62,7 @@
 :- import_module libs.globals.
 :- import_module parse_tree.error_util.
 :- import_module parse_tree.mercury_to_mercury.
+:- import_module parse_tree.prog_io_mode_defn.
 :- import_module parse_tree.prog_io_mutable.
 :- import_module parse_tree.prog_io_sym_name.
 :- import_module parse_tree.prog_io_typeclass.
@@ -541,11 +547,30 @@ find_constructor([H | T], SymName, Arity, Ctor) :-
 
 parse_eqv_type_defn(ModuleName, VarSet, HeadTerm, BodyTerm, Attributes,
         Condition, Context, SeqNum, MaybeItem) :-
-    parse_type_defn_head(ModuleName, VarSet, HeadTerm,
-        MaybeNameAndParams),
+    parse_eqv_type_defn_base(ModuleName, VarSet, HeadTerm, BodyTerm,
+        MaybeNameParamsAndType),
+    (
+        MaybeNameParamsAndType = error3(Specs),
+        MaybeItem = error1(Specs)
+    ;
+        MaybeNameParamsAndType = ok3(Name, Params, Type),
+        varset.coerce(VarSet, TypeVarSet),
+        TypeDefn = parse_tree_eqv_type(Type),
+        ItemTypeDefn = item_type_defn_info(TypeVarSet, Name, Params, TypeDefn,
+            Condition, Context, SeqNum),
+        Item = item_type_defn(ItemTypeDefn),
+        check_no_attributes(ok1(Item), Attributes, MaybeItem)
+    ).
+
+:- pred parse_eqv_type_defn_base(module_name::in, varset::in, term::in,
+    term::in, maybe3(sym_name, list(type_param), mer_type)::out) is det.
+
+parse_eqv_type_defn_base(ModuleName, VarSet, HeadTerm, BodyTerm,
+        MaybeNameParamsAndType) :-
+    parse_type_defn_head(ModuleName, VarSet, HeadTerm, MaybeNameAndParams),
     (
         MaybeNameAndParams = error2(Specs),
-        MaybeItem = error1(Specs)
+        MaybeNameParamsAndType = error3(Specs)
     ;
         MaybeNameAndParams = ok2(Name, Params),
         % Check that all the variables in the body occur in the head.
@@ -560,23 +585,17 @@ parse_eqv_type_defn(ModuleName, VarSet, HeadTerm, BodyTerm, Attributes,
                 words(BodyTermStr), suffix("."), nl],
             Spec = error_spec(severity_error, phase_term_to_parse_tree,
                 [simple_msg(get_term_context(BodyTerm), [always(Pieces)])]),
-            MaybeItem = error1([Spec])
+            MaybeNameParamsAndType = error3([Spec])
         ;
             % XXX Should pass more correct ContextPieces.
             ContextPieces = [],
             parse_type(BodyTerm, VarSet, ContextPieces, MaybeType),
             (
                 MaybeType = ok1(Type),
-                varset.coerce(VarSet, TypeVarSet),
-                TypeDefn = parse_tree_eqv_type(Type),
-                ItemTypeDefn = item_type_defn_info(TypeVarSet, Name, Params,
-                    TypeDefn, Condition, Context, SeqNum),
-                Item = item_type_defn(ItemTypeDefn),
-                MaybeItem0 = ok1(Item),
-                check_no_attributes(MaybeItem0, Attributes, MaybeItem)
+                MaybeNameParamsAndType = ok3(Name, Params, Type)
             ;
                 MaybeType = error1(Specs),
-                MaybeItem = error1(Specs)
+                MaybeNameParamsAndType = error3(Specs)
             )
         )
     ).
@@ -747,6 +766,87 @@ parse_abstract_type_defn(ModuleName, VarSet, HeadTerm, Attributes0,
         Item = item_type_defn(ItemTypeDefn),
         MaybeItem0 = ok1(Item),
         check_no_attributes(MaybeItem0, Attributes, MaybeItem)
+    ).
+
+%-----------------------------------------------------------------------------%
+%
+% Parse a subtype definition.
+%
+
+parse_subtype_defn(ModuleName, VarSet, SubtypeDefnTerm, Attributes, Context,
+        SeqNum, MaybeItem) :-
+    (
+        SubtypeDefnTerm = term.functor(term.atom(Name), ArgTerms, _),
+        ArgTerms = [HeadTerm, BodyTerm0],
+        (
+            Name = "::",
+            BodyTerm = BodyTerm0
+        ;
+            Name = "--->",
+            BodyTerm = term.functor(term.atom("bound"), [BodyTerm0], Context)
+        )
+    ->
+        (
+            HeadTerm = term.functor(term.atom(HeadName), HeadArgTerms, _),
+            HeadName = "<",
+            HeadArgTerms = [SubtypeTerm, BaseTerm]
+        ->
+            parse_subtype_defn_parts(ModuleName, VarSet, SubtypeTerm, BaseTerm,
+                BodyTerm, Context, SeqNum, MaybeItem0),
+            check_no_attributes(MaybeItem0, Attributes, MaybeItem)
+        ;
+            Pieces = [words("Error:"), quote("<"), words("expected in"),
+                quote(":- subtype"), words("definition head."), nl],
+            Spec = error_spec(severity_error, phase_term_to_parse_tree,
+                [simple_msg(get_term_context(HeadTerm), [always(Pieces)])]),
+            MaybeItem = error1([Spec])
+        )
+    ;
+        Pieces = [words("Error:"), quote("--->"), words("or"), quote("::"),
+            words("expected in"), quote(":- subtype"), words("definition."),
+            nl],
+        Spec = error_spec(severity_error, phase_term_to_parse_tree,
+            [simple_msg(get_term_context(SubtypeDefnTerm), [always(Pieces)])]),
+        MaybeItem = error1([Spec])
+    ).
+
+:- pred parse_subtype_defn_parts(module_name::in, varset::in, term::in,
+    term::in, term::in, prog_context::in, int::in, maybe1(item)::out) is det.
+
+parse_subtype_defn_parts(ModuleName, VarSet, SubtypeTerm, BaseTerm, BodyTerm0,
+        Context, SeqNum, MaybeItem) :-
+    parse_eqv_type_defn_base(ModuleName, VarSet, SubtypeTerm, BaseTerm,
+        MaybeNameParamsAndType),
+    (
+        MaybeNameParamsAndType = error3(Specs),
+        MaybeItem = error1(Specs)
+    ;
+        MaybeNameParamsAndType = ok3(Name, Params, Type),
+        parse_condition_suffix(BodyTerm0, BodyTerm, Condition),
+        (
+            % Don't allow variables in the inst.
+            term.contains_var(BodyTerm, _)
+        ->
+            Pieces = [words("Error: inst variable in RHS of"),
+                quote(":- subtype"), words("definition."), nl],
+            Spec = error_spec(severity_error, phase_term_to_parse_tree,
+                [simple_msg(get_term_context(BodyTerm), [always(Pieces)])]),
+            MaybeItem = error1([Spec])
+        ;
+            parse_inst_defn_body(VarSet, BodyTerm, MaybeInst),
+            (
+                MaybeInst = error1(Specs),
+                MaybeItem = error1(Specs)
+            ;
+                MaybeInst = ok1(Inst),
+                varset.coerce(VarSet, TypeVarSet),
+                TypeDefn = parse_tree_subtype(Type, Inst),
+                ItemTypeDefn = item_type_defn_info(TypeVarSet, Name, Params,
+                    TypeDefn, Condition, Context, SeqNum),
+                Item = item_type_defn(ItemTypeDefn),
+                MaybeItem = ok1(Item)
+            )
+        )
     ).
 
 %-----------------------------------------------------------------------------%

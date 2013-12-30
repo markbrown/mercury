@@ -197,6 +197,7 @@
                 pf_which                        :: pred_or_func,
                 pf_name                         :: sym_name,
                 pf_arg_decls                    :: list(type_and_mode),
+                pf_subtypes                     :: pred_decl_subtypes,
                 % The next two fields hold the `with_type` and `with_inst`
                 % annotations. This syntactic sugar is expanded out by
                 % equiv_type.m, which will then set these fields to `no'.
@@ -353,6 +354,7 @@
                 pred_or_func,
                 sym_name,           % name of the pred or func
                 list(type_and_mode),% the arguments' types and modes
+                pred_decl_subtypes, % argument subtypes
                 maybe(mer_type),    % any `with_type` annotation
                 maybe(mer_inst),    % any `with_inst` annotation
                 maybe(determinism), % any determinism declaration

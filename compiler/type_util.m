@@ -711,6 +711,7 @@ check_dummy_type_2(ModuleInfo, Type, CoveredTypes) = IsDummy :-
                     )
                 ;
                     ( TypeBody = hlds_eqv_type(_)
+                    ; TypeBody = hlds_subtype(_, _)
                     ; TypeBody = hlds_foreign_type(_)
                     ; TypeBody = hlds_solver_type(_, _)
                     ; TypeBody = hlds_abstract_type(_)
@@ -856,6 +857,7 @@ classify_type_defn_body(TypeBody) = TypeCategory :-
         % XXX We should be able to return more precise descriptions
         % than this.
         ( TypeBody = hlds_eqv_type(_)
+        ; TypeBody = hlds_subtype(_, _)
         ; TypeBody = hlds_foreign_type(_)
         ; TypeBody = hlds_solver_type(_, _)
         ; TypeBody = hlds_abstract_type(abstract_type_general)

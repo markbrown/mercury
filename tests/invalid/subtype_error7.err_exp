@@ -1,0 +1,3 @@
+subtype_error7.m:017: Error: subtypes not allowed in typeclass constraints.
+subtype_error7.m:019: Error: clause for predicate `subtype_error7.p'/2
+subtype_error7.m:019:   without preceding `pred' declaration.

@@ -269,6 +269,7 @@ is_valid_instance_orig_type(ModuleInfo, ClassId, InstanceDefn, Type,
             ;
                 ( TypeBody = hlds_du_type(_, _, _, _, _, _, _, _, _)
                 ; TypeBody = hlds_foreign_type(_)
+                ; TypeBody = hlds_subtype(_, _)
                 ; TypeBody = hlds_solver_type(_, _)
                 ; TypeBody = hlds_abstract_type(_)
                 )
@@ -346,6 +347,11 @@ is_valid_instance_type(ModuleInfo, ClassId, InstanceDefn, Type,
                     TypeBody = hlds_eqv_type(EqvType),
                     is_valid_instance_type(ModuleInfo, ClassId, InstanceDefn,
                         EqvType, N, _, !SeenTypes, !Specs)
+                ;
+                    TypeBody = hlds_subtype(_, _),
+                    Spec = bad_instance_type_msg(ClassId, InstanceDefn, N,
+                        [words("is a subtype.")], badly_formed),
+                    !:Specs = [Spec | !.Specs]
                 ;
                     ( TypeBody = hlds_du_type(_, _, _, _, _, _, _, _, _)
                     ; TypeBody = hlds_foreign_type(_)
@@ -498,7 +504,8 @@ bad_instance_type_msg(ClassId, InstanceDefn, N, EndPieces, Kind) = Spec :-
         Kind = badly_formed,
         VerbosePieces =
             [words("(Types in instance declarations must be functors " ++
-                "with variables as arguments.)"), nl],
+                "with variables as arguments, and must not be subtypes.)"),
+            nl],
         HeadingMsg = simple_msg(InstanceContext,
             [always(HeaderPieces), always(ArgNumPieces),
             verbose_only(VerbosePieces)])
@@ -723,6 +730,9 @@ check_for_bogus_methods(InstanceMethods, ClassId, ClassPredIds, Context,
                 % Expected types of arguments.
                 im_expected_arg_types   :: list(mer_type),
 
+                % Expected subtypes of arguments.
+                im_expected_subtypes    :: pred_decl_subtypes,
+
                 % Constraints from class method.
                 im_method_constraints   :: prog_constraints,
 
@@ -757,6 +767,7 @@ check_instance_pred(ClassId, ClassVars, ClassInterface, PredId,
         ), ProcIds),
     module_info_pred_info(ModuleInfo0, PredId, PredInfo),
     pred_info_get_arg_types(PredInfo, ArgTypeVars, ExistQVars, ArgTypes),
+    pred_info_get_subtypes(PredInfo, Subtypes),
     pred_info_get_class_context(PredInfo, ClassContext0),
     pred_info_get_markers(PredInfo, Markers0),
     remove_marker(marker_class_method, Markers0, Markers),
@@ -798,7 +809,7 @@ check_instance_pred(ClassId, ClassVars, ClassInterface, PredId,
         InstanceTypes, PredName),
 
     MethodInfo0 = instance_method_info(ModuleInfo0, QualInfo0, PredName,
-        Arity, ExistQVars, ArgTypes, ClassContext, ArgModes,
+        Arity, ExistQVars, ArgTypes, Subtypes, ClassContext, ArgModes,
         ArgTypeVars, Status, PredOrFunc),
 
     check_instance_pred_procs(ClassId, ClassVars, MethodName, Markers,
@@ -806,7 +817,7 @@ check_instance_pred(ClassId, ClassVars, ClassInterface, PredId,
         MethodInfo0, MethodInfo, !Specs),
 
     MethodInfo = instance_method_info(ModuleInfo, QualInfo, _PredName,
-        _Arity, _ExistQVars, _ArgTypes, _ClassContext, _ArgModes,
+        _Arity, _ExistQVars, _ArgTypes, _Subtypes, _ClassContext, _ArgModes,
         _ArgTypeVars, _Status, _PredOrFunc),
 
     !:InstanceCheckInfo = instance_check_info(InstanceDefn,
@@ -832,8 +843,8 @@ check_instance_pred_procs(ClassId, ClassVars, MethodName, Markers,
         _InstanceContext, InstanceConstraints, InstanceTypes, _OriginalTypes,
         InstanceBody, MaybeInstancePredProcs, InstanceVarSet, _InstanceProofs),
     !.Info = instance_method_info(_ModuleInfo, _QualInfo, _PredName, Arity,
-        _ExistQVars, _ArgTypes, _ClassContext, _ArgModes, _ArgTypeVars,
-        _Status, PredOrFunc),
+        _ExistQVars, _ArgTypes, _Subtypes, _ClassContext, _ArgModes,
+        _ArgTypeVars, _Status, PredOrFunc),
     get_matching_instance_defns(InstanceBody, PredOrFunc, MethodName,
         Arity, MatchingInstanceMethods),
     (
@@ -933,7 +944,7 @@ produce_auxiliary_procs(ClassId, ClassVars, MethodName, Markers0,
         InstanceProcIds, Info0, Info, !Specs) :-
 
     Info0 = instance_method_info(ModuleInfo0, QualInfo0, PredName,
-        Arity, ExistQVars0, ArgTypes0, ClassMethodClassContext0,
+        Arity, ExistQVars0, ArgTypes0, Subtypes0, ClassMethodClassContext0,
         ArgModes, TVarSet0, Status0, PredOrFunc),
     UnsubstArgTypes = ArgTypes0,
 
@@ -948,6 +959,7 @@ produce_auxiliary_procs(ClassId, ClassVars, MethodName, Markers0,
     % instance, and update the class types appropriately.
     map.from_corresponding_lists(ClassVars, InstanceTypes1, TypeSubst),
     apply_subst_to_type_list(TypeSubst, ArgTypes0, ArgTypes1),
+    apply_subst_to_subtypes(TypeSubst, Subtypes0, Subtypes1),
     apply_subst_to_prog_constraints(TypeSubst, ClassMethodClassContext0,
         ClassMethodClassContext1),
 
@@ -965,6 +977,7 @@ produce_auxiliary_procs(ClassId, ClassVars, MethodName, Markers0,
     % Project away the unwanted type variables.
     varset.squash(TVarSet1, VarsToKeep, TVarSet2, SquashSubst),
     apply_variable_renaming_to_type_list(SquashSubst, ArgTypes1, ArgTypes),
+    apply_variable_renaming_to_subtypes(SquashSubst, Subtypes1, Subtypes),
     apply_variable_renaming_to_prog_constraints(SquashSubst,
         ClassMethodClassContext1, ClassMethodClassContext),
     apply_partial_map_to_list(SquashSubst, ExistQVars0, ExistQVars),
@@ -1020,9 +1033,9 @@ produce_auxiliary_procs(ClassId, ClassVars, MethodName, Markers0,
     PredOrigin = origin_instance_method(MethodName, MethodConstraints),
     map.init(VarNameRemap),
     pred_info_init(InstanceModuleName, PredName, PredArity, PredOrFunc,
-        Context, PredOrigin, Status,
-        goal_type_none, Markers, ArgTypes, TVarSet, ExistQVars, ClassContext,
-        Proofs, ConstraintMap, ClausesInfo, VarNameRemap, PredInfo0),
+        Context, PredOrigin, Status, goal_type_none, Markers, ArgTypes,
+        Subtypes, TVarSet, ExistQVars, ClassContext, Proofs, ConstraintMap,
+        ClausesInfo, VarNameRemap, PredInfo0),
     pred_info_set_clauses_info(ClausesInfo, PredInfo0, PredInfo1),
     pred_info_set_instance_method_arg_types(UnsubstArgTypes,
         PredInfo1, PredInfo2),
@@ -1046,8 +1059,8 @@ produce_auxiliary_procs(ClassId, ClassVars, MethodName, Markers0,
     module_info_set_predicate_table(PredicateTable, ModuleInfo1, ModuleInfo),
 
     Info = instance_method_info(ModuleInfo, QualInfo, PredName, Arity,
-        ExistQVars, ArgTypes, ClassContext, ArgModes, TVarSet, Status,
-        PredOrFunc).
+        ExistQVars, ArgTypes, Subtypes, ClassContext, ArgModes, TVarSet,
+        Status, PredOrFunc).
 
 %---------------------------------------------------------------------------%
 
@@ -1757,6 +1770,7 @@ check_ctor_constraints(TypeCtor - TypeDefn, !ModuleInfo, !Specs) :-
             !ModuleInfo, !Specs)
     ;
         ( Body = hlds_eqv_type(_)
+        ; Body = hlds_subtype(_, _)
         ; Body = hlds_foreign_type(_)
         ; Body = hlds_solver_type(_, _)
         ; Body = hlds_abstract_type(_)

@@ -204,6 +204,10 @@ type_used_modules(_TypeCtor, TypeDefn, !UsedModules) :-
             TypeBody = hlds_eqv_type(EqvType),
             mer_type_used_modules(Visibility, EqvType, !UsedModules)
         ;
+            TypeBody = hlds_subtype(BaseType, Inst),
+            mer_type_used_modules(Visibility, BaseType, !UsedModules),
+            mer_inst_used_modules(Visibility, Inst, !UsedModules)
+        ;
             ( TypeBody = hlds_foreign_type(_)
             ; TypeBody = hlds_solver_type(_, _)
             ; TypeBody = hlds_abstract_type(_)
@@ -567,7 +571,7 @@ mer_inst_used_modules(Visibility, Inst, !UsedModules) :-
         ),
         ho_inst_info_used_modules(Visibility, HOInstInfo, !UsedModules)
     ;
-        Inst = free(Type),
+        Inst = free(Type, _),
         mer_type_used_modules(Visibility, Type, !UsedModules)
     ;
         Inst = bound(_, _InstResults, BoundInsts),
@@ -628,10 +632,10 @@ inst_name_used_modules(Visibility, InstName, !UsedModules) :-
         ),
         inst_name_used_modules(Visibility, SubInstName, !UsedModules)
     ;
-        InstName = typed_ground(_, Type),
+        InstName = typed_ground(_, Type, _),
         mer_type_used_modules(Visibility, Type, !UsedModules)
     ;
-        InstName = typed_inst(Type, SubInstName),
+        InstName = typed_inst(Type, SubInstName, _),
         mer_type_used_modules(Visibility, Type, !UsedModules),
         inst_name_used_modules(Visibility, SubInstName, !UsedModules)
     ).

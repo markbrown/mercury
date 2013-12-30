@@ -865,10 +865,17 @@ check_type_of_main(PredInfo, !Specs) :-
     list(proc_id)::out, pred_info::in, pred_info::out) is det.
 
 propagate_types_into_modes(ModuleInfo, ErrorProcIds, !PredInfo) :-
-    pred_info_get_arg_types(!.PredInfo, ArgTypes),
+    pred_info_get_subtypes(!.PredInfo, Subtypes),
+    (
+        Subtypes = pred_decl_no_subtypes,
+        set.init(PropCtors),
+        pred_info_get_arg_types(!.PredInfo, ArgTypes)
+    ;
+        Subtypes = pred_decl_subtypes(PropCtors, ArgTypes)
+    ),
     pred_info_get_procedures(!.PredInfo, Procs0),
     ProcIds = pred_info_procids(!.PredInfo),
-    propagate_types_into_proc_modes(ModuleInfo, ProcIds, ArgTypes,
+    propagate_types_into_proc_modes(ModuleInfo, ProcIds, PropCtors, ArgTypes,
         [], RevErrorProcIds, Procs0, Procs),
     ErrorProcIds = list.reverse(RevErrorProcIds),
     pred_info_set_procedures(Procs, !PredInfo).
@@ -876,15 +883,17 @@ propagate_types_into_modes(ModuleInfo, ErrorProcIds, !PredInfo) :-
 %-----------------------------------------------------------------------------%
 
 :- pred propagate_types_into_proc_modes(module_info::in, list(proc_id)::in,
-    list(mer_type)::in, list(proc_id)::in, list(proc_id)::out,
+    set(type_ctor)::in, list(mer_type)::in,
+    list(proc_id)::in, list(proc_id)::out,
     proc_table::in, proc_table::out) is det.
 
-propagate_types_into_proc_modes(_, [], _, !RevErrorProcIds, !Procs).
-propagate_types_into_proc_modes(ModuleInfo, [ProcId | ProcIds], ArgTypes,
-        !RevErrorProcIds, !Procs) :-
+propagate_types_into_proc_modes(_, [], _, _, !RevErrorProcIds, !Procs).
+propagate_types_into_proc_modes(ModuleInfo, [ProcId | ProcIds], PropCtors,
+        ArgTypes, !RevErrorProcIds, !Procs) :-
     map.lookup(!.Procs, ProcId, ProcInfo0),
     proc_info_get_argmodes(ProcInfo0, ArgModes0),
-    propagate_types_into_mode_list(ModuleInfo, ArgTypes, ArgModes0, ArgModes),
+    propagate_types_into_mode_list(ModuleInfo, PropCtors, ArgTypes,
+        ArgModes0, ArgModes),
 
     % Check for unbound inst vars. (This needs to be done after
     % propagate_types_into_mode_list, because we need the insts
@@ -896,7 +905,7 @@ propagate_types_into_proc_modes(ModuleInfo, [ProcId | ProcIds], ArgTypes,
         proc_info_set_argmodes(ArgModes, ProcInfo0, ProcInfo),
         map.det_update(ProcId, ProcInfo, !Procs)
     ),
-    propagate_types_into_proc_modes(ModuleInfo, ProcIds, ArgTypes,
+    propagate_types_into_proc_modes(ModuleInfo, ProcIds, PropCtors, ArgTypes,
         !RevErrorProcIds, !Procs).
 
 :- pred report_unbound_inst_vars(module_info::in, pred_id::in,
@@ -1521,6 +1530,7 @@ get_constructor_containing_field(ModuleInfo, TermType, FieldName,
             ConsId, FieldNumber)
     ;
         ( TermTypeBody = hlds_eqv_type(_)
+        ; TermTypeBody = hlds_subtype(_, _)
         ; TermTypeBody = hlds_foreign_type(_)
         ; TermTypeBody = hlds_solver_type(_, _)
         ; TermTypeBody = hlds_abstract_type(_)

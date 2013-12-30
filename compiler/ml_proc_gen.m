@@ -176,6 +176,7 @@ foreign_type_required_imports(Target, _TypeCtor - TypeDefn) = Imports :-
         ;
             ( TypeBody = hlds_du_type(_, _, _,_,  _, _, _, _, _)
             ; TypeBody = hlds_eqv_type(_)
+            ; TypeBody = hlds_subtype(_, _)
             ; TypeBody = hlds_solver_type(_, _)
             ; TypeBody = hlds_abstract_type(_)
             ),

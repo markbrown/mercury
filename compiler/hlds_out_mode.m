@@ -203,7 +203,7 @@ inst_to_term_with_context(Lang, Context, Inst) = Term :-
         Inst = free,
         Term = make_atom(Context, "free")
     ;
-        Inst = free(Type),
+        Inst = free(Type, _),
         unparse_type(Type, Term0),
         Term1 = term.coerce(Term0),
         Term = term.functor(term.atom("free"), [Term1], Context)
@@ -445,14 +445,14 @@ inst_name_to_term_with_context(Lang, Context, InstName) = Term :-
             make_atom(Context, unify_is_real_to_str(Real))],
             Context, Term)
     ;
-        InstName = typed_ground(Uniq, Type),
+        InstName = typed_ground(Uniq, Type, _PropCtors),
         unparse_type(Type, Term0),
         construct_qualified_term_with_context(unqualified("$typed_ground"),
             [make_atom(Context, inst_uniqueness(Uniq, "shared")),
             term.coerce(Term0)],
             Context, Term)
     ;
-        InstName = typed_inst(Type, SubInstName),
+        InstName = typed_inst(Type, SubInstName, _PropCtors),
         unparse_type(Type, Term0),
         construct_qualified_term_with_context(unqualified("$typed_inst"),
             [term.coerce(Term0),
@@ -791,7 +791,7 @@ mercury_format_structured_inst(Inst, Indent, Lang, InclAddr, InstVarSet, !U) :-
         Inst = free,
         add_string("free\n", !U)
     ;
-        Inst = free(_T),
+        Inst = free(_T, _PropCtors),
         add_string("free(with some type)\n", !U)
     ;
         Inst = bound(Uniq, InstResults, BoundInsts),
@@ -975,7 +975,7 @@ mercury_format_structured_inst_name(InstName, Indent, Lang, InclAddr,
         mercury_format_tabs(Indent, !U),
         add_string(")\n", !U)
     ;
-        InstName = typed_ground(Uniqueness, Type),
+        InstName = typed_ground(Uniqueness, Type, _PropCtors),
         mercury_format_tabs(Indent, !U),
         add_string("$typed_ground(", !U),
         mercury_format_uniqueness(Uniqueness, "shared", !U),
@@ -984,7 +984,7 @@ mercury_format_structured_inst_name(InstName, Indent, Lang, InclAddr,
         mercury_format_type(TypeVarSet, no, Type, !U),
         add_string(")\n", !U)
     ;
-        InstName = typed_inst(Type, SubInstName),
+        InstName = typed_inst(Type, SubInstName, _PropCtors),
         mercury_format_tabs(Indent, !U),
         add_string("$typed_inst(", !U),
         varset.init(TypeVarSet),

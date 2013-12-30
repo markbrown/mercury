@@ -298,14 +298,14 @@ abstractly_unify_inst_3(Live, InstA, InstB, Real, Inst, Detism, !ModuleInfo) :-
                 fail
             ;
                 ( InstB = defined_inst(_)
-                ; InstB = free(_)
+                ; InstB = free(_, _)
                 ; InstB = inst_var(_)
                 ),
                 % XXX Failing here preserves the old behavior of this predicate
                 % for these cases, but I am not convinced it is the right thing
                 % to do.
                 % Why are we not handling defined_inst by looking it up?
-                % Why are we not handling free/1 similarly to free/0?
+                % Why are we not handling free/2 similarly to free/0?
                 % And why are we not aborting for inst_var?
                 fail
             )
@@ -412,14 +412,14 @@ abstractly_unify_inst_3(Live, InstA, InstB, Real, Inst, Detism, !ModuleInfo) :-
             % )
         ;
             ( InstB = defined_inst(_)
-            ; InstB = free(_)
+            ; InstB = free(_, _)
             ; InstB = inst_var(_)
             ),
             % XXX Failing here preserves the old behavior of this predicate
             % for these cases, but I am not convinced it is the right thing
             % to do.
             % Why are we not handling defined_inst by looking it up?
-            % Why are we not handling free/1 similarly to free/0?
+            % Why are we not handling free/2 similarly to free/0?
             % And why are we not aborting for inst_var?
             fail
         )
@@ -491,14 +491,14 @@ abstractly_unify_inst_3(Live, InstA, InstB, Real, Inst, Detism, !ModuleInfo) :-
                 fail
             ;
                 ( InstB = defined_inst(_)
-                ; InstB = free(_)
+                ; InstB = free(_, _)
                 ; InstB = inst_var(_)
                 ),
                 % XXX Failing here preserves the old behavior of this predicate
                 % for these cases, but I am not convinced it is the right thing
                 % to do.
                 % Why are we not handling defined_inst by looking it up?
-                % Why are we not handling free/1 similarly to free/0?
+                % Why are we not handling free/2 similarly to free/0?
                 % And why are we not aborting for inst_var?
                 fail
             )
@@ -568,14 +568,14 @@ abstractly_unify_inst_3(Live, InstA, InstB, Real, Inst, Detism, !ModuleInfo) :-
                 fail
             ;
                 ( InstB = defined_inst(_)
-                ; InstB = free(_)
+                ; InstB = free(_, _)
                 ; InstB = inst_var(_)
                 ),
                 % XXX Failing here preserves the old behavior of this predicate
                 % for these cases, but I am not convinced it is the right thing
                 % to do.
                 % Why are we not handling defined_inst by looking it up?
-                % Why are we not handling free/1 similarly to free/0?
+                % Why are we not handling free/2 similarly to free/0?
                 % And why are we not aborting for inst_var?
                 fail
             )
@@ -629,13 +629,13 @@ abstractly_unify_inst_3(Live, InstA, InstB, Real, Inst, Detism, !ModuleInfo) :-
 %       )
     ;
         ( InstA = defined_inst(_)
-        ; InstA = free(_)
+        ; InstA = free(_, _)
         ; InstA = inst_var(_)
         ),
         % XXX Failing here preserves the old behavior of this predicate
         % for these cases, but I am not convinced it is the right thing to do.
         % Why are we not handling defined_inst by looking it up?
-        % Why are we not handling free/1 similarly to free/0?
+        % Why are we not handling free/2 similarly to free/0?
         % And why are we not aborting for inst_var?
         fail
     ).
@@ -780,13 +780,13 @@ abstractly_unify_inst_functor_2(Live, InstA, ConsIdB, ArgInstsB, ArgLives,
         fail
     ;
         ( InstA = defined_inst(_)
-        ; InstA = free(_)
+        ; InstA = free(_, _)
         ; InstA = inst_var(_)
         ),
         % XXX Failing here preserves the old behavior of this predicate
         % for these cases, but I am not convinced it is the right thing to do.
         % Why are we not handling defined_inst by looking it up?
-        % Why are we not handling free/1 similarly to free/0?
+        % Why are we not handling free/2 similarly to free/0?
         % And why are we not aborting for inst_var?
         fail
     ).
@@ -1138,9 +1138,9 @@ make_ground_inst(Inst0, Live, Uniq1, Real, Inst, Detism, !ModuleInfo) :-
         Inst = ground(Uniq, none),
         Detism = detism_det
     ;
-        Inst0 = free(T),
+        Inst0 = free(T, PropCtors),
         unify_uniq(Live, Real, detism_det, unique, Uniq1, Uniq),
-        Inst = defined_inst(typed_ground(Uniq, T)),
+        Inst = defined_inst(typed_ground(Uniq, T, PropCtors)),
         Detism = detism_det
     ;
         Inst0 = bound(Uniq0, InstResults0, BoundInsts0),
@@ -1257,12 +1257,13 @@ make_any_inst(Inst0, Live, Uniq1, Real, Inst, Detism, !ModuleInfo) :-
         Inst = any(Uniq, none),
         Detism = detism_det
     ;
-        Inst0 = free(T),
+        Inst0 = free(T, PropCtors),
         % The following is a round-about way of doing this
         %   unify_uniq(Live, Real, detism_det, unique, Uniq0, Uniq),
         %   Any = typed_any(Uniq, T).
         % without the need for a `typed_any' inst.
-        Any = typed_inst(T, unify_inst(Live, free, any(Uniq1, none), Real)),
+        InstName = unify_inst(Live, free, any(Uniq1, none), Real),
+        Any = typed_inst(T, InstName, PropCtors),
         Inst = defined_inst(Any),
         Detism = detism_det
     ;
@@ -1425,7 +1426,7 @@ make_shared_inst(Inst0, Inst, !ModuleInfo) :-
         % The caller should ensure that this never happens.
         unexpected($module, $pred, "cannot make shared version of `free'")
     ;
-        Inst0 = free(_),
+        Inst0 = free(_, _),
         % The caller should ensure that this never happens.
         unexpected($module, $pred, "cannot make shared version of `free(T)'")
     ;
@@ -1545,7 +1546,7 @@ make_mostly_uniq_inst(Inst0, Inst, !ModuleInfo) :-
     (
         ( Inst0 = not_reached
         ; Inst0 = free
-        ; Inst0 = free(_)
+        ; Inst0 = free(_, _)
         ),
         Inst = Inst0
     ;
@@ -1947,7 +1948,7 @@ merge_inst_list_uniq([Inst | Insts], Uniq0, ModuleInfo, !Expansions, Uniq) :-
 merge_inst_uniq(InstA, UniqB, ModuleInfo, !Expansions, Uniq) :-
     (
         ( InstA = free
-        ; InstA = free(_)
+        ; InstA = free(_, _)
         ; InstA = not_reached
         ),
         Uniq = UniqB
@@ -2126,7 +2127,7 @@ inst_contains_nonstandard_func_mode_2(ModuleInfo, Inst, !.Expansions)
             SubInst, !.Expansions)
     ;
         ( Inst = free
-        ; Inst = free(_)
+        ; Inst = free(_, _)
         ; Inst = not_reached
         ; Inst = abstract_inst(_, _)
         ),
@@ -2248,7 +2249,7 @@ inst_contains_any_2(ModuleInfo, Inst, !.Expansions) = ContainsAny :-
         ContainsAny = inst_contains_any_2(ModuleInfo, SubInst, !.Expansions)
     ;
         ( Inst = free
-        ; Inst = free(_)
+        ; Inst = free(_, _)
         ; Inst = not_reached
         ; Inst = ground(_, _)
         ; Inst = abstract_inst(_, _)
@@ -2307,7 +2308,7 @@ inst_may_restrict_cons_ids(ModuleInfo, Inst) = MayRestrict :-
         MayRestrict = yes
     ;
         ( Inst = free
-        ; Inst = free(_)
+        ; Inst = free(_, _)
         ; Inst = not_reached
         ; Inst = ground(_, _)
         ),

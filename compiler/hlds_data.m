@@ -494,6 +494,15 @@ cons_table_optimize(!ConsTable) :-
                 du_type_is_foreign_type     :: maybe(foreign_type_body)
             )
     ;       hlds_eqv_type(mer_type)
+    ;       hlds_subtype(
+                % The subtype is treated as equivalent to the base type
+                % for the purposes of type checking.
+                subtype_base_type           :: mer_type,
+
+                % The following inst is used when the subtype is propagated
+                % into ground.
+                subtype_inst                :: mer_inst
+            )
     ;       hlds_foreign_type(foreign_type_body)
     ;       hlds_solver_type(solver_type_details, maybe(unify_compare))
     ;       hlds_abstract_type(abstract_type_details).
@@ -830,6 +839,7 @@ get_maybe_cheaper_tag_test(TypeBody) = CheaperTagTest :-
         TypeBody = hlds_du_type(_, _, CheaperTagTest, _, _, _, _, _, _)
     ;
         ( TypeBody = hlds_eqv_type(_)
+        ; TypeBody = hlds_subtype(_, _)
         ; TypeBody = hlds_foreign_type(_)
         ; TypeBody = hlds_solver_type(_, _)
         ; TypeBody = hlds_abstract_type(_)

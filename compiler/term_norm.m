@@ -155,6 +155,9 @@ find_weights_for_type(TypeCtor - TypeDefn, !Weights) :-
         % This type does not introduce any functors.
         TypeBody = hlds_eqv_type(_)
     ;
+        % This type does not introduce any functors.
+        TypeBody = hlds_subtype(_, _)
+    ;
         % This type may introduce some functors,
         % but we will never see them in this analysis.
         TypeBody = hlds_abstract_type(_)

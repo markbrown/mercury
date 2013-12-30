@@ -293,6 +293,25 @@ ORDINARY_PROGS=	\
 	string_switch2 \
 	string_switch3 \
 	string_various \
+	subtype_export_main1 \
+	subtype_export_main2 \
+	subtypes1 \
+	subtypes10 \
+	subtypes11 \
+	subtypes12 \
+	subtypes13 \
+	subtypes14 \
+	subtypes15 \
+	subtypes16 \
+	subtypes17 \
+	subtypes2 \
+	subtypes3 \
+	subtypes4 \
+	subtypes5 \
+	subtypes6 \
+	subtypes7 \
+	subtypes8 \
+	subtypes9 \
 	sv_nested_closures \
 	sv_record_update \
 	switch_detect \

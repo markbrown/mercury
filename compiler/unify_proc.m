@@ -570,10 +570,12 @@ generate_clause_info(SpecialPredId, Type, TypeBody, Context, ModuleInfo,
 generate_initialise_proc_body(_Type, TypeBody, X, Context, Clause, !Info) :-
     info_get_module_info(!.Info, ModuleInfo),
     (
-        % If this is an equivalence type then we just generate a call
+        % If this is an equivalence type or subtype then we just generate a call
         % to the initialisation pred of the type on the RHS of the equivalence
         % and cast the result back to the type on the LHS of the equivalence.
-        TypeBody = hlds_eqv_type(EqvType),
+        ( TypeBody = hlds_eqv_type(EqvType)
+        ; TypeBody = hlds_subtype(EqvType, _)
+        ),
         goal_info_init(Context, GoalInfo),
         make_fresh_named_var_from_type(EqvType, "PreCast_HeadVar", 1, X0,
             !Info),
@@ -675,7 +677,9 @@ generate_unify_proc_body(Type, TypeBody, X, Y, Context, Clause, !Info) :-
                     Clause, !Info)
             )
         ;
-            TypeBody = hlds_eqv_type(EqvType),
+            ( TypeBody = hlds_eqv_type(EqvType)
+            ; TypeBody = hlds_subtype(EqvType, _)
+            ),
             IsDummyType = check_dummy_type(ModuleInfo, EqvType),
             (
                 IsDummyType = is_dummy_type,
@@ -885,6 +889,10 @@ generate_index_proc_body(Type, TypeBody, X, Index, Context, Clause, !Info) :-
             unexpected($module, $pred,
                 "trying to create index proc for eqv type")
         ;
+            TypeBody = hlds_subtype(_, _),
+            unexpected($module, $pred,
+                "trying to create index proc for subtype")
+        ;
             TypeBody = hlds_foreign_type(_),
             unexpected($module, $pred,
                 "trying to create index proc for a foreign type")
@@ -950,7 +958,9 @@ generate_compare_proc_body(Type, TypeBody, Res, X, Y, Context, Clause,
                     Context, Clause, !Info)
             )
         ;
-            TypeBody = hlds_eqv_type(EqvType),
+            ( TypeBody = hlds_eqv_type(EqvType)
+            ; TypeBody = hlds_subtype(EqvType, _)
+            ),
             IsDummyType = check_dummy_type(ModuleInfo, EqvType),
             (
                 IsDummyType = is_dummy_type,

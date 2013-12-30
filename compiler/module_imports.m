@@ -359,7 +359,7 @@ init_dependencies(FileName, SourceFileModuleName, NestedModuleNames,
         list.member(Item, Items),
         Item = item_pred_decl(ItemPredDecl),
         ItemPredDecl = item_pred_decl_info(_, _, _, _, pf_predicate, Name,
-            [_, _], WithType, _, _, _, _, _, _, _),
+            [_, _], _, WithType, _, _, _, _, _, _, _),
         unqualify_name(Name) = "main",
 
         % XXX We should allow `main/2' to be declared using `with_type`,

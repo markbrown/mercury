@@ -33,7 +33,7 @@
 
 :- pred module_add_pred_or_func(tvarset::in, inst_varset::in, existq_tvars::in,
     pred_or_func::in, sym_name::in, list(type_and_mode)::in,
-    maybe(determinism)::in, purity::in,
+    pred_decl_subtypes::in, maybe(determinism)::in, purity::in,
     prog_constraints::in, pred_markers::in, prog_context::in,
     item_status::in, maybe(pair(pred_id, proc_id))::out,
     module_info::in, module_info::out,
@@ -89,18 +89,19 @@
 :- import_module parse_tree.set_of_var.
 
 :- import_module map.
-:- import_module set.
 :- import_module require.
+:- import_module set.
 :- import_module term.
 :- import_module varset.
 
-module_add_pred_or_func(TypeVarSet, InstVarSet, ExistQVars,
-        PredOrFunc, PredName, TypesAndModes, MaybeDet, Purity,
-        ClassContext, Markers, Context, item_status(Status, NeedQual),
-        MaybePredProcId, !ModuleInfo, !Specs) :-
+module_add_pred_or_func(TypeVarSet, InstVarSet, ExistQVars, PredOrFunc,
+        PredName, TypesAndModes, Subtypes, MaybeDet, Purity, ClassContext,
+        Markers, Context, item_status(Status, NeedQual), MaybePredProcId,
+        !ModuleInfo, !Specs) :-
     split_types_and_modes(TypesAndModes, Types, MaybeModes0),
-    add_new_pred(TypeVarSet, ExistQVars, PredName, Types, Purity, ClassContext,
-        Markers, Context, Status, NeedQual, PredOrFunc, !ModuleInfo, !Specs),
+    add_new_pred(TypeVarSet, ExistQVars, PredName, Types, Subtypes, Purity,
+        ClassContext, Markers, Context, Status, NeedQual, PredOrFunc,
+        !ModuleInfo, !Specs),
     (
         PredOrFunc = pf_predicate,
         MaybeModes0 = yes(Modes0),
@@ -149,15 +150,15 @@ module_add_pred_or_func(TypeVarSet, InstVarSet, ExistQVars,
     % to be reflected there too.
     %
 :- pred add_new_pred(tvarset::in, existq_tvars::in, sym_name::in,
-    list(mer_type)::in, purity::in, prog_constraints::in,
-    pred_markers::in, prog_context::in, import_status::in,
-    need_qualifier::in, pred_or_func::in,
+    list(mer_type)::in, pred_decl_subtypes::in, purity::in,
+    prog_constraints::in, pred_markers::in, prog_context::in,
+    import_status::in, need_qualifier::in, pred_or_func::in,
     module_info::in, module_info::out,
     list(error_spec)::in, list(error_spec)::out) is det.
 
-add_new_pred(TVarSet, ExistQVars, PredName, Types, Purity, ClassContext,
-        Markers0, Context, ItemStatus, NeedQual, PredOrFunc, !ModuleInfo,
-        !Specs) :-
+add_new_pred(TVarSet, ExistQVars, PredName, Types, Subtypes, Purity,
+        ClassContext, Markers0, Context, ItemStatus, NeedQual, PredOrFunc,
+        !ModuleInfo, !Specs) :-
     % Only preds with opt_imported clauses are tagged as opt_imported, so
     % that the compiler doesn't look for clauses for other preds read in
     % from optimization interfaces.
@@ -187,8 +188,8 @@ add_new_pred(TVarSet, ExistQVars, PredName, Types, Purity, ClassContext,
         map.init(VarNameRemap),
         pred_info_init(ModuleName, PredName, Arity, PredOrFunc, Context,
             origin_user(PredName), Status, goal_type_none, Markers, Types,
-            TVarSet, ExistQVars, ClassContext, Proofs, ConstraintMap,
-            ClausesInfo, VarNameRemap, PredInfo0),
+            Subtypes, TVarSet, ExistQVars, ClassContext, Proofs,
+            ConstraintMap, ClausesInfo, VarNameRemap, PredInfo0),
         predicate_table_lookup_pf_m_n_a(PredTable0, is_fully_qualified,
             PredOrFunc, MNameOfPred, PName, Arity, PredIds),
         (
@@ -532,13 +533,15 @@ preds_add_implicit_2(ClausesInfo, ModuleInfo, ModuleName, PredName, Arity,
     ClassContext = constraints([], []),
     % We assume none of the arguments are existentially typed.
     % Existential types must be declared, they won't be inferred.
+    % Likewise with subtypes.
     ExistQVars = [],
+    Subtypes = pred_decl_no_subtypes,
     init_markers(Markers0),
     map.init(VarNameRemap),
     pred_info_init(ModuleName, PredName, Arity, PredOrFunc, Context,
-        Origin, Status, goal_type_none, Markers0, Types, TVarSet, ExistQVars,
-        ClassContext, Proofs, ConstraintMap, ClausesInfo, VarNameRemap,
-        PredInfo0),
+        Origin, Status, goal_type_none, Markers0, Types, Subtypes, TVarSet,
+        ExistQVars, ClassContext, Proofs, ConstraintMap, ClausesInfo,
+        VarNameRemap, PredInfo0),
     add_marker(marker_infer_type, Markers0, Markers),
     pred_info_set_markers(Markers, PredInfo0, PredInfo),
     predicate_table_lookup_pf_sym_arity(!.PredicateTable,

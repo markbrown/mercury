@@ -1835,6 +1835,11 @@ can_switch_on_type(TypeBody) = CanSwitchOnType :-
         % out of it before simplify.
         unexpected($module, $pred, "eqv type")
     ;
+        TypeBody = hlds_subtype(_, _),
+        % The type of the variable should have had any subtypes expanded to
+        % their base types before simplify.
+        unexpected($module, $pred, "subtype")
+    ;
         TypeBody = hlds_foreign_type(_),
         % If the type is foreign, how can have a Mercury unification using it?
         unexpected($module, $pred, "foreign type")

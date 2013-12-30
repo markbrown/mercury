@@ -209,9 +209,14 @@ process_type_qualification(Var, Type0, VarSet, Context, !ModuleInfo,
     % We don't need to record the expanded types for smart recompilation
     % because at the moment no recompilation.item_id can depend on a
     % clause item.
-    RecordExpanded = no,
-    equiv_type.replace_in_type(EqvMap, Type2, Type, _, TVarSet1, TVarSet,
-        RecordExpanded, _),
+    some [!EquivTypeInfo] (
+        equiv_type_info_init(!:EquivTypeInfo),
+        set_expand_subtypes(!EquivTypeInfo),
+        equiv_type.replace_in_type(EqvMap, Type2, Type, _, TVarSet1, TVarSet,
+            !EquivTypeInfo),
+        ContextPieces = [words("explicit type qualification.")],
+        check_no_subtypes(ContextPieces, Context, !.EquivTypeInfo, _, !Specs)
+    ),
     update_var_types(Var, Type, Context, VarTypes0, VarTypes, !Specs),
     !:QualInfo = qual_info(EqvMap, TVarSet, TVarRenaming,
         TVarNameMap, VarTypes, MQInfo, Status, FoundError).

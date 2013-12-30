@@ -992,7 +992,7 @@ encode_head_var_func(Info, InitialInstmap, InstmapDelta, Var) = Bytes :-
 inst_to_byte(ModuleInfo, MerInst) = Byte :-
     (
         ( MerInst = free
-        ; MerInst = free(_)
+        ; MerInst = free(_, _)
         )
     ->
         InstRep = ir_free_rep

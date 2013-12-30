@@ -3,6 +3,10 @@ NEWS since Mercury 13.05.x
 
 Changes to the Mercury language:
 
+* Mercury now supports subtype declarations, which allow detailed insts to be
+  used more easily in predicate and function declarations. See the Mercury
+  Language Reference Manual for more information.
+
 * Repeated type variables may now occur in the heads of type class instances.
   For example, instance declarations like the following are now allowed:
 

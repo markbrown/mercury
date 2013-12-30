@@ -178,6 +178,7 @@ cons_id_to_tag(ModuleInfo, ConsId) = Tag:-
             map.lookup(ConsTagTable, ConsId, Tag)
         ;
             ( TypeBody = hlds_eqv_type(_)
+            ; TypeBody = hlds_subtype(_, _)
             ; TypeBody = hlds_foreign_type(_)
             ; TypeBody = hlds_solver_type(_, _)
             ; TypeBody = hlds_abstract_type(_)
@@ -404,8 +405,8 @@ match_insts_with_renaming(ModuleInfo, InstA, InstB, Renaming) :-
         InstB = free,
         map.init(Renaming)
     ;
-        InstA = free(Type),
-        InstB = free(Type),
+        InstA = free(Type, PropCtors),
+        InstB = free(Type, PropCtors),
         map.init(Renaming)
     ;
         InstA = any(Uniq, HOInstInfoA),

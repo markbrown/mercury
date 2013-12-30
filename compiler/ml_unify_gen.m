@@ -2423,6 +2423,7 @@ ml_gen_hl_tag_field_id(ModuleInfo, Type) = FieldId :-
         )
     ;
         ( TypeDefnBody = hlds_eqv_type(_)
+        ; TypeDefnBody = hlds_subtype(_, _)
         ; TypeDefnBody = hlds_foreign_type(_)
         ; TypeDefnBody = hlds_solver_type(_, _)
         ; TypeDefnBody = hlds_abstract_type(_)

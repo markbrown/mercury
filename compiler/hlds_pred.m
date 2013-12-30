@@ -552,19 +552,19 @@
     ;       do_not_need_to_requantify.
 
     % pred_info_init(ModuleName, SymName, Arity, PredOrFunc, Context,
-    %   Origin, Status, GoalType, Markers, ArgTypes, TypeVarSet,
-    %   ExistQVars, ClassContext, ClassProofs, ClassConstraintMap,
-    %   User, ClausesInfo, VarNameRemap, PredInfo)
+    %   Origin, Status, GoalType, Markers, ArgTypes, Subtypes, TypeVarSet,
+    %   ExistQVars, ClassContext, ClassProofs, ClassConstraintMap, User,
+    %   ClausesInfo, VarNameRemap, PredInfo)
     %
     % Return a pred_info whose fields are filled in from the information
     % (direct and indirect) in the arguments, and from defaults.
     %
 :- pred pred_info_init(module_name::in, sym_name::in, arity::in,
     pred_or_func::in, prog_context::in, pred_origin::in, import_status::in,
-    goal_type::in, pred_markers::in, list(mer_type)::in, tvarset::in,
-    existq_tvars::in, prog_constraints::in, constraint_proof_map::in,
-    constraint_map::in, clauses_info::in, map(prog_var, string)::in,
-    pred_info::out) is det.
+    goal_type::in, pred_markers::in, list(mer_type)::in,
+    pred_decl_subtypes::in, tvarset::in, existq_tvars::in,
+    prog_constraints::in, constraint_proof_map::in, constraint_map::in,
+    clauses_info::in, map(prog_var, string)::in, pred_info::out) is det.
 
     % pred_info_create(ModuleName, SymName, PredOrFunc, Context, Origin,
     %   Status, Markers, ArgTypes, TypeVarSet, ExistQVars,
@@ -630,6 +630,7 @@
 :- pred pred_info_get_markers(pred_info::in, pred_markers::out) is det.
 :- pred pred_info_get_attributes(pred_info::in, pred_attributes::out) is det.
 :- pred pred_info_get_arg_types(pred_info::in, list(mer_type)::out) is det.
+:- pred pred_info_get_subtypes(pred_info::in, pred_decl_subtypes::out) is det.
 :- pred pred_info_get_typevarset(pred_info::in, tvarset::out) is det.
 :- pred pred_info_get_tvar_kinds(pred_info::in, tvar_kind_map::out) is det.
 :- pred pred_info_get_exist_quant_tvars(pred_info::in, existq_tvars::out)
@@ -1015,6 +1016,9 @@ calls_are_fully_qualified(Markers) =
                 % Kinds of the type vars.
                 tvar_kinds          :: tvar_kind_map,
 
+                % Argument subtypes.
+                arg_subtypes        :: pred_decl_subtypes,
+
                 % The statically known bindings of existentially quantified
                 % type variables inside this predicate. This field is set
                 % at the end of the polymorphism stage.
@@ -1120,9 +1124,9 @@ calls_are_fully_qualified(Markers) =
             ).
 
 pred_info_init(ModuleName, SymName, Arity, PredOrFunc, Context, Origin, Status,
-        GoalType, Markers, ArgTypes, TypeVarSet, ExistQVars, ClassContext,
-        ClassProofs, ClassConstraintMap, ClausesInfo, VarNameRemap,
-        PredInfo) :-
+        GoalType, Markers, ArgTypes, Subtypes, TypeVarSet, ExistQVars,
+        ClassContext, ClassProofs, ClassConstraintMap, ClausesInfo,
+        VarNameRemap, PredInfo) :-
     PredName = unqualify_name(SymName),
     sym_name_get_module_name_default(SymName, ModuleName, PredModuleName),
     type_vars_list(ArgTypes, TVars),
@@ -1136,8 +1140,8 @@ pred_info_init(ModuleName, SymName, Arity, PredOrFunc, Context, Origin, Status,
     set.init(Assertions),
     map.init(Procs),
     PredSubInfo = pred_sub_info(Context, GoalType, Attributes, Kinds,
-        ExistQVarBindings, HeadTypeParams, ClassProofs, ClassConstraintMap,
-        UnprovenBodyConstraints, inst_graph_info_init, [],
+        Subtypes, ExistQVarBindings, HeadTypeParams, ClassProofs,
+        ClassConstraintMap, UnprovenBodyConstraints, inst_graph_info_init, [],
         VarNameRemap, Assertions, []),
     PredInfo = pred_info(PredModuleName, PredName, Arity, PredOrFunc,
         Origin, Status, Markers, ArgTypes, TypeVarSet, TypeVarSet,
@@ -1159,6 +1163,7 @@ pred_info_create(ModuleName, SymName, PredOrFunc, Context, Origin, Status,
     % XXX kind inference:
     % we assume all tvars have kind `star'.
     map.init(Kinds),
+    Subtypes = pred_decl_no_subtypes,
     map.init(ExistQVarBindings),
     UnprovenBodyConstraints = [],
 
@@ -1177,8 +1182,8 @@ pred_info_create(ModuleName, SymName, PredOrFunc, Context, Origin, Status,
     map.det_insert(ProcId, ProcInfo, Procs0, Procs),
 
     PredSubInfo = pred_sub_info(Context, goal_type_clause, Attributes, Kinds,
-        ExistQVarBindings, HeadTypeParams, ClassProofs, ClassConstraintMap,
-        UnprovenBodyConstraints, inst_graph_info_init, [],
+        Subtypes, ExistQVarBindings, HeadTypeParams, ClassProofs,
+        ClassConstraintMap, UnprovenBodyConstraints, inst_graph_info_init, [],
         VarNameRemap, Assertions, []),
     PredInfo = pred_info(ModuleName, PredName, Arity, PredOrFunc,
         Origin, Status, Markers, ArgTypes, TypeVarSet, TypeVarSet,
@@ -1289,6 +1294,7 @@ pred_info_get_goal_type(PI, PI ^ pred_sub_info ^ goal_type).
 pred_info_get_markers(PI, PI ^ markers).
 pred_info_get_attributes(PI, PI ^ pred_sub_info ^ attributes).
 pred_info_get_arg_types(PI, PI ^ arg_types).
+pred_info_get_subtypes(PI, PI ^ pred_sub_info ^ arg_subtypes).
 pred_info_get_typevarset(PI, PI ^ typevarset).
 pred_info_get_tvar_kinds(PI, PI ^ pred_sub_info ^ tvar_kinds).
 pred_info_get_exist_quant_tvars(PI, PI ^ exist_quant_tvars).

@@ -167,6 +167,7 @@
 :- import_module maybe.
 :- import_module pair.
 :- import_module require.
+:- import_module set.
 :- import_module std_util.
 :- import_module string.
 :- import_module term.
@@ -2321,10 +2322,11 @@ make_new_spec_parallel_pred_info(FutureArgs, Status, PPId, !PredInfo) :-
     % constraints.
     map.init(EmptyProofs),
     map.init(EmptyConstraintMap),
+    Subtypes = pred_decl_no_subtypes,
     Origin = origin_transformed(transform_dependent_parallel_conjunction,
         OrigOrigin, PredId),
     pred_info_init(PredModule, Name, Arity, PredOrFunc, Context, Origin,
-        Status, GoalType, Markers, ArgTypes, Tvars, ExistQVars,
+        Status, GoalType, Markers, ArgTypes, Subtypes, Tvars, ExistQVars,
         ClassContext, EmptyProofs, EmptyConstraintMap, ClausesInfo,
         VarNameRemap, !:PredInfo),
     pred_info_set_typevarset(TypeVars, !PredInfo).
@@ -3166,14 +3168,16 @@ make_future_var(SharedVarName, SharedVarType, FutureVar, FutureVarType,
     prog_varset::in, prog_varset::out, vartypes::in, vartypes::out,
     ts_string_table::in, ts_string_table::out) is det.
 
-make_future_name_var_and_goal(Name, FutureNameVar, Goal, !VarSet, !VarTypes, !TSStringTable) :-
+make_future_name_var_and_goal(Name, FutureNameVar, Goal, !VarSet, !VarTypes,
+        !TSStringTable) :-
     varset.new_named_var("FutureName" ++ Name, FutureNameVar, !VarSet),
     IntType = builtin_type(builtin_type_int),
+    set.init(PropCtors),
     add_var_type(FutureNameVar, IntType, !VarTypes),
     allocate_ts_string(Name, NameId, !TSStringTable),
     Ground = ground(unique, none),
     GoalExpr = unify(FutureNameVar, rhs_functor(int_const(NameId), no, []),
-        (free(IntType) -> Ground) - (Ground -> Ground),
+        (free(IntType, PropCtors) -> Ground) - (Ground -> Ground),
         construct(FutureNameVar, int_const(NameId), [], [],
             construct_statically, cell_is_unique, no_construct_sub_info),
         unify_context(umc_implicit("dep_par_conj transformation"), [])),

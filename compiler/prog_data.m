@@ -75,6 +75,13 @@
     --->    type_only(mer_type)
     ;       type_and_mode(mer_type, mer_mode).
 
+:- func type_and_mode_to_type(type_and_mode) = mer_type.
+
+:- implementation.
+
+type_and_mode_to_type(type_only(Type)) = Type.
+type_and_mode_to_type(type_and_mode(Type, _)) = Type.
+
 %-----------------------------------------------------------------------------%
 %
 % Stuff about purity.
@@ -350,6 +357,32 @@ det_negation_det(detism_cc_multi,  no).
 det_negation_det(detism_cc_non,    no).
 det_negation_det(detism_erroneous, yes(detism_erroneous)).
 det_negation_det(detism_failure,   yes(detism_det)).
+
+%-----------------------------------------------------------------------------%
+%
+% Stuff about subtypes.
+%
+
+:- interface.
+
+    % Information about subtypes in pred/func declarations.
+    %
+:- type pred_decl_subtypes
+
+            % There are no subtypes used in the declaration.
+    --->    pred_decl_no_subtypes
+
+            % Some subtypes are used.  This information is collected by
+            % equiv_type.m, and is propagated into the modes during
+            % post_typecheck.
+    ;       pred_decl_subtypes(
+
+                % Subtype constructors occuring in the argument types.
+                set(type_ctor),
+
+                % Argument types with subtypes unexpanded.
+                list(mer_type)
+            ).
 
 %-----------------------------------------------------------------------------%
 %
@@ -1709,6 +1742,10 @@ cons_id_is_const_struct(ConsId, ConstNum) :-
     ;       parse_tree_eqv_type(
                 eqv_type            :: mer_type
             )
+    ;       parse_tree_subtype(
+                subtype_base_type   :: mer_type,
+                subtype_inst        :: mer_inst
+            )
     ;       parse_tree_abstract_type(
                 abstract_details    :: abstract_type_details
             )
@@ -2187,7 +2224,7 @@ get_type_kind(kinded_type(_, Kind)) = Kind.
     %
 :- type mer_inst
     --->        free
-    ;           free(mer_type)
+    ;           free(mer_type, set(type_ctor))
 
     ;           any(uniqueness, ho_inst_info)
                 % The ho_inst_info holds extra information
@@ -2395,9 +2432,10 @@ get_type_kind(kinded_type(_, Kind)) = Kind.
     % `abstractly_unify_inst(IsLive, InstA, InstB, IsReal)'.
     % And `ground_inst' and `any_inst' are insts that result
     % from unifying an inst with `ground' or `any', respectively.
-    % `typed_inst' is an inst with added type information.
-    % `typed_ground(Uniq, Type)' a equivalent to
-    % `typed_inst(ground(Uniq, no), Type)'.
+    % `typed_inst' is an inst with added type information, plus the set
+    % of type constructors that need to be propagated into ground.
+    % `typed_ground(Uniq, Type, PropCtors)' a equivalent to
+    % `typed_inst(ground(Uniq, no), Type, PropCtors)'.
     % Note that `typed_ground' is a special case of `typed_inst',
     % and `ground_inst' and `any_inst' are special cases of `unify_inst'.
     % The reason for having the special cases is efficiency.
@@ -2410,8 +2448,8 @@ get_type_kind(kinded_type(_, Kind)) = Kind.
     ;       any_inst(inst_name, is_live, uniqueness, unify_is_real)
     ;       shared_inst(inst_name)
     ;       mostly_uniq_inst(inst_name)
-    ;       typed_ground(uniqueness, mer_type)
-    ;       typed_inst(mer_type, inst_name).
+    ;       typed_ground(uniqueness, mer_type, set(type_ctor))
+    ;       typed_inst(mer_type, inst_name, set(type_ctor)).
 
     % NOTE: `is_live' records liveness in the sense used by mode analysis.
     % This is not the same thing as the notion of liveness used by code

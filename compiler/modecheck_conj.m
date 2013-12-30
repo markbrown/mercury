@@ -398,7 +398,7 @@ non_free_vars_in_assoc_list([]) = [].
 non_free_vars_in_assoc_list([Var - Inst | AssocList]) =
     (
         ( Inst = free
-        ; Inst = free(_)
+        ; Inst = free(_, _)
         )
     ->
         non_free_vars_in_assoc_list(AssocList)
@@ -575,14 +575,14 @@ candidate_init_vars_call(ModeInfo, [Arg | Args], [Mode | Modes],
     mode_get_insts_semidet(ModuleInfo, Mode, InitialInst, FinalInst),
     (
         InitialInst \= free,
-        InitialInst \= free(_)
+        InitialInst \= free(_, _)
     ->
         % This arg is an input that needs instantiation.
         set_of_var.insert(Arg, !CandidateVars)
     ;
         % Otherwise this arg could be an output...
         FinalInst \= free,
-        FinalInst \= free(_)
+        FinalInst \= free(_, _)
     ->
         % And it is.
         ( set_of_var.contains(!.NonFree, Arg) ->

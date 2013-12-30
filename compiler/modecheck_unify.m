@@ -363,7 +363,9 @@ modecheck_unification_rhs_lambda(X, LambdaGoal, Unification0, UnifyContext, _,
         HowToCheckGoal = check_modes,
         % This only needs to be done once.
         mode_info_get_types_of_vars(!.ModeInfo, Vars, VarTypes),
-        propagate_types_into_mode_list(ModuleInfo0, VarTypes, Modes0, Modes)
+        set.init(PropCtors),
+        propagate_types_into_mode_list(ModuleInfo0, PropCtors, VarTypes,
+            Modes0, Modes)
     ;
         HowToCheckGoal = check_unique_modes,
         Modes = Modes0

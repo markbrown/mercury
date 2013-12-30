@@ -980,7 +980,7 @@ do_process_inst(ModuleInfo, InstGraph, Free, Bound, DoHO,
             Bound(Var, !.Constraint, C, S0, S)
         ;
             ( Inst = free
-            ; Inst = free(_)
+            ; Inst = free(_, _)
             )
         ->
             Free(Var, !.Constraint, C, S0, S)

@@ -1087,6 +1087,7 @@ gather_types_2(TypeCtor, TypeDefn0, !Info) :-
             hlds_data.set_type_defn_body(TypeBody, TypeDefn0, TypeDefn)
         ;
             ( TypeBody0 = hlds_eqv_type(_)
+            ; TypeBody0 = hlds_subtype(_, _)
             ; TypeBody0 = hlds_solver_type(_, _)
             ; TypeBody0 = hlds_abstract_type(_)
             ),
@@ -1373,6 +1374,9 @@ intermod_write_type(OutInfo, TypeCtor - TypeDefn, !IO) :-
     ;
         Body = hlds_eqv_type(EqvType),
         TypeBody = parse_tree_eqv_type(EqvType)
+    ;
+        Body = hlds_subtype(BaseType, Inst),
+        TypeBody = parse_tree_subtype(BaseType, Inst)
     ;
         Body = hlds_abstract_type(Details),
         TypeBody = parse_tree_abstract_type(Details)

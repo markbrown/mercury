@@ -824,8 +824,8 @@ module_qualify_item(Item0, Item, Continue, !Info, !Specs) :-
     ;
         Item0 = item_pred_decl(ItemPredDecl0),
         ItemPredDecl0 = item_pred_decl_info(Origin, A, IVs, B, PredOrFunc,
-            SymName, TypesAndModes0, WithType0, WithInst0, C, D, E,
-            Constraints0, Context, SeqNum),
+            SymName, TypesAndModes0, Subtypes, WithType0, WithInst0,
+            C, D, E, Constraints0, Context, SeqNum),
         list.length(TypesAndModes0, Arity),
         mq_info_set_error_context(
             mqec_pred_or_func(PredOrFunc, mq_id(SymName, Arity)) - Context,
@@ -835,7 +835,7 @@ module_qualify_item(Item0, Item, Continue, !Info, !Specs) :-
         map_fold2_maybe(qualify_type, WithType0, WithType, !Info, !Specs),
         map_fold2_maybe(qualify_inst, WithInst0, WithInst, !Info, !Specs),
         ItemPredDecl = item_pred_decl_info(Origin, A, IVs, B, PredOrFunc,
-            SymName, TypesAndModes, WithType, WithInst, C, D, E,
+            SymName, TypesAndModes, Subtypes, WithType, WithInst, C, D, E,
             Constraints, Context, SeqNum),
         Item = item_pred_decl(ItemPredDecl),
         Continue = yes
@@ -1025,6 +1025,10 @@ qualify_type_defn(
 qualify_type_defn(parse_tree_eqv_type(Type0), parse_tree_eqv_type(Type),
         !Info, !Specs) :-
     qualify_type(Type0, Type, !Info, !Specs).
+qualify_type_defn(parse_tree_subtype(Type0, Inst0),
+        parse_tree_subtype(Type, Inst), !Info, !Specs) :-
+    qualify_type(Type0, Type, !Info, !Specs),
+    qualify_inst(Inst0, Inst, !Info, !Specs).
 qualify_type_defn(parse_tree_abstract_type(_) @ Defn, Defn, !Info, !Specs).
 qualify_type_defn(parse_tree_foreign_type(_, _, _) @ Defn, Defn, !Info,
         !Specs).
@@ -1157,7 +1161,7 @@ qualify_inst(Inst0, Inst, !Info, !Specs) :-
         ),
         Inst = Inst0
     ;
-        Inst0 = free(_),
+        Inst0 = free(_, _),
         unexpected($module, $pred, "compiler generated inst not expected")
     ;
         Inst0 = bound(Uniq, InstResults0, BoundInsts0),
@@ -1240,9 +1244,9 @@ qualify_inst_name(shared_inst(_), _, !Info, !Specs) :-
     unexpected($module, $pred, "compiler generated inst unexpected").
 qualify_inst_name(mostly_uniq_inst(_), _, !Info, !Specs) :-
     unexpected($module, $pred, "compiler generated inst unexpected").
-qualify_inst_name(typed_ground(_, _), _, !Info, !Specs) :-
+qualify_inst_name(typed_ground(_, _, _), _, !Info, !Specs) :-
     unexpected($module, $pred, "compiler generated inst unexpected").
-qualify_inst_name(typed_inst(_, _), _, !Info, !Specs) :-
+qualify_inst_name(typed_inst(_, _, _), _, !Info, !Specs) :-
     unexpected($module, $pred, "compiler generated inst unexpected").
 
     % Qualify an inst of the form bound(functor(...)).
@@ -1603,15 +1607,15 @@ qualify_class_method(Method0, Method, !Info, !Specs) :-
     % done when the item is parsed.
     (
         Method0 = method_pred_or_func(TypeVarset, InstVarset, ExistQVars,
-            PredOrFunc, Name, TypesAndModes0, WithType0, WithInst0, MaybeDet,
-            Cond, Purity, ClassContext0, Context),
+            PredOrFunc, Name, TypesAndModes0, Subtypes, WithType0, WithInst0,
+            MaybeDet, Cond, Purity, ClassContext0, Context),
         qualify_types_and_modes(TypesAndModes0, TypesAndModes, !Info, !Specs),
         qualify_prog_constraints(ClassContext0, ClassContext, !Info, !Specs),
         map_fold2_maybe(qualify_type, WithType0, WithType, !Info, !Specs),
         map_fold2_maybe(qualify_inst, WithInst0, WithInst, !Info, !Specs),
         Method = method_pred_or_func(TypeVarset, InstVarset, ExistQVars,
-            PredOrFunc, Name, TypesAndModes, WithType, WithInst, MaybeDet,
-            Cond, Purity, ClassContext, Context)
+            PredOrFunc, Name, TypesAndModes, Subtypes, WithType, WithInst,
+            MaybeDet, Cond, Purity, ClassContext, Context)
     ;
         Method0 = method_pred_or_func_mode(Varset, PredOrFunc, Name, Modes0,
             WithInst0, MaybeDet, Cond, Context),

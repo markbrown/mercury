@@ -2422,6 +2422,7 @@ update_field_in_map(Map, Index, Value) =
 * Insts modes and mode definitions::
 * Predicate and function mode declarations::
 * Constrained polymorphic modes::
+* Subtypes::
 * Different clauses for different modes::
 @end menu
 
@@ -2782,7 +2783,7 @@ The mode analysis algorithm annotates each call with the mode used.
 @node Constrained polymorphic modes
 @section Constrained polymorphic modes
 
-Mode declarations for predicates and functions may also have inst parameters.
+Mode declarations for predicates and functions may have inst parameters.
 However, such parameters must be constrained to be @emph{compatible} with some
 other inst.
 In a predicate or function mode declaration,
@@ -2842,9 +2843,68 @@ The example can be further shortened to
 
 
 Constrained polymorphic modes are particularly useful when passing
-objects with higher-order types to polymorphic predicates
-since they allow the higher-order mode information to be retained
-(@pxref{Higher-order}).
+objects with subtypes (@pxref{Subtypes})
+or higher-order types (@pxref{Higher-order}) to polymorphic predicates,
+since they allow the necessary mode information to be retained.
+
+@node Subtypes
+@section Subtypes
+
+A @dfn{subtype} is a type, known as the @dfn{base type},
+combined with an inst that is used in place of @code{ground}
+in predicate and function declarations.
+Subtypes can be declared as follows:
+@example
+:- subtype sub < base :: subground.
+@end example
+@noindent
+which declares @code{sub} to be a subtype of @code{base},
+with @code{subground} as the ground inst.
+
+As with insts, an alternative syntax exists for
+@code{bound} instantiatedness trees:
+@example
+:- subtype non_empty_list(T) < list(T) ---> [ground | ground].
+@end example
+@noindent
+which allows the function symbols to be listed directly.
+
+Subtypes may have type parameters that may be used in the base type.
+The ground inst must not contain any inst variables.
+
+Subtypes may be used in the argument types of
+predicate and function declarations, including typeclass methods.
+Subtypes must not be used in any other place;
+an error will be reported if this occurs.
+
+For the purposes of type checking,
+a subtype in a predicate or function declaration
+is treated as being equivalent to the base type.
+For the purposes of mode checking,
+the subtype inst is used in place of @code{ground}
+in the corresponding argument mode.
+
+For example, the following declaration:
+@example
+:- pred p(sub::in, sub::out) is det.
+@end example
+@noindent
+is equivalent to
+@example
+:- pred p(base::in(subground), base::out(subground)) is det.
+@end example
+@noindent
+given the declaration above.
+
+Subtypes may be nested within other types.
+For example, this declaration:
+@example
+:- pred q(list(sub)::in) is semidet.
+@end example
+@noindent
+says that @code{q} expects a list of elements with inst @code{subground}.
+A mode error would occur in a caller to @code{q}
+if the elements could not be proven to have that inst.
 
 @node Different clauses for different modes
 @section Different clauses for different modes

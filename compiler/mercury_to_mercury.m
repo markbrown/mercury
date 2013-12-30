@@ -612,8 +612,9 @@ mercury_output_item_mode_defn(Info, ItemModeDefn, !IO) :-
 
 mercury_output_item_pred_decl(Info, ItemPredDecl, !IO) :-
     ItemPredDecl = item_pred_decl_info(_Origin, TypeVarSet, InstVarSet,
-        ExistQVars, PredOrFunc, PredName0, TypesAndModes, WithType, WithInst,
-        Det, _Cond, Purity, ClassContext, Context, _SeqNum),
+        ExistQVars, PredOrFunc, PredName0, TypesAndModes,
+        _Subtypes, WithType, WithInst, Det, _Cond, Purity, ClassContext,
+        Context, _SeqNum),
     maybe_unqualify_sym_name(Info, PredName0, PredName),
     maybe_output_line_number(Info, Context, !IO),
     (
@@ -986,7 +987,7 @@ output_class_method(Method, !IO) :-
     io.write_string("\t", !IO),
     (
         Method = method_pred_or_func(TypeVarSet, InstVarSet, ExistQVars,
-            PredOrFunc, SymName, TypesAndModes, WithType, WithInst,
+            PredOrFunc, SymName, TypesAndModes, _Subtypes, WithType, WithInst,
             Detism, _Condition, Purity, ClassContext, Context),
 
         % The module name is implied by the qualifier of the
@@ -1343,7 +1344,7 @@ mercury_format_inst(Inst, InstInfo, !U) :-
         Inst = free,
         add_string("free", !U)
     ;
-        Inst = free(_T),
+        Inst = free(_T, _PropCtors),
         add_string("free(with some type)", !U)
     ;
         Inst = bound(Uniq, _, BoundInsts),
@@ -1462,7 +1463,7 @@ mercury_format_inst_name(InstName, InstInfo, !U) :-
         mercury_format_comma_real(Real, !U),
         add_string(")", !U)
     ;
-        InstName = typed_ground(Uniqueness, Type),
+        InstName = typed_ground(Uniqueness, Type, _PropCtors),
         add_string("$typed_ground(", !U),
         mercury_format_uniqueness(Uniqueness, "shared", !U),
         add_string(", ", !U),
@@ -1470,7 +1471,7 @@ mercury_format_inst_name(InstName, InstInfo, !U) :-
         mercury_format_type(TypeVarSet, no, Type, !U),
         add_string(")", !U)
     ;
-        InstName = typed_inst(Type, SubInstName),
+        InstName = typed_inst(Type, SubInstName, _PropCtors),
         add_string("$typed_inst(", !U),
         varset.init(TypeVarSet),
         mercury_format_type(TypeVarSet, no, Type, !U),
@@ -1743,6 +1744,17 @@ mercury_output_type_defn(Info, TVarSet, Name, TParams, TypeDefn, Context,
         mercury_output_term(TVarSet, no, TypeTerm, !IO),
         io.write_string(" == ", !IO),
         mercury_output_type(TVarSet, no, Body, !IO),
+        io.write_string(".\n", !IO)
+    ;
+        TypeDefn = parse_tree_subtype(BaseType, Inst),
+        io.write_string(":- subtype ", !IO),
+        Args = list.map((func(V) = term.variable(V, Context)), TParams),
+        construct_qualified_term_with_context(Name, Args, Context, TypeTerm),
+        mercury_output_term(TVarSet, no, TypeTerm, !IO),
+        io.write_string(" < ", !IO),
+        mercury_output_type(TVarSet, no, BaseType, !IO),
+        io.write_string(" :: ", !IO),
+        mercury_output_inst(Inst, varset.init, !IO),
         io.write_string(".\n", !IO)
     ;
         TypeDefn = parse_tree_du_type(Ctors, MaybeUserEqComp, MaybeDirectArgs),

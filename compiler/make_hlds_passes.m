@@ -243,6 +243,7 @@ decide_du_type_layout(ModuleInfo, TypeCtor, TypeDefn, !TypeTable) :-
         replace_type_ctor_defn(TypeCtor, PackedTypeDefn, !TypeTable)
     ;
         ( Body0 = hlds_eqv_type(_)
+        ; Body0 = hlds_subtype(_, _)
         ; Body0 = hlds_foreign_type(_)
         ; Body0 = hlds_solver_type(_, _)
         ; Body0 = hlds_abstract_type(_)
@@ -622,8 +623,9 @@ add_pass_1_type_defn(ItemTypeDefnInfo, !Status, !ModuleInfo, !Specs) :-
 
 add_pass_1_pred_decl(ItemPredDecl, Status, !ModuleInfo, !Specs) :-
     ItemPredDecl = item_pred_decl_info(Origin, TypeVarSet, InstVarSet,
-        ExistQVars, PredOrFunc, PredName, TypesAndModes, _WithType, _WithInst,
-        MaybeDet, _Cond, Purity, ClassContext, Context, _SeqNum),
+        ExistQVars, PredOrFunc, PredName, TypesAndModes, Subtypes,
+        _WithType, _WithInst, MaybeDet, _Cond, Purity, ClassContext,
+        Context, _SeqNum),
     init_markers(Markers0),
 
     % If this predicate was added as a result of the mutable transformation
@@ -648,8 +650,8 @@ add_pass_1_pred_decl(ItemPredDecl, Status, !ModuleInfo, !Specs) :-
         Markers = Markers0
     ),
     module_add_pred_or_func(TypeVarSet, InstVarSet, ExistQVars,
-        PredOrFunc, PredName, TypesAndModes, MaybeDet, Purity, ClassContext,
-        Markers, Context, Status, _, !ModuleInfo, !Specs).
+        PredOrFunc, PredName, TypesAndModes, Subtypes, MaybeDet, Purity,
+        ClassContext, Markers, Context, Status, _, !ModuleInfo, !Specs).
 
 :- pred add_pass_1_mode_decl(item_mode_decl_info::in,
     item_status::in, module_info::in, module_info::out,
@@ -990,8 +992,9 @@ add_pass_2_type_defn(ItemTypeDefn, Status, !ModuleInfo, !Specs) :-
 
 add_pass_2_pred_decl(ItemPredDecl, _Status, !ModuleInfo, !Specs) :-
     ItemPredDecl = item_pred_decl_info(_Origin, _TypeVarSet, _InstVarSet,
-        _ExistQVars, PredOrFunc, SymName, TypesAndModes, _WithType, _WithInst,
-        _MaybeDet, _Cond, _Purity, _ClassContext, _Context, _SeqNum),
+        _ExistQVars, PredOrFunc, SymName, TypesAndModes, _Subtypes,
+        _WithType, _WithInst, _MaybeDet, _Cond, _Purity, _ClassContext,
+        _Context, _SeqNum),
     % Add default modes for function declarations, if necessary.
     (
         PredOrFunc = pf_predicate
@@ -1390,12 +1393,14 @@ add_pass_3_type_defn(ItemTypeDefn, Status, !ModuleInfo, !QualInfo, !Specs) :-
     list(error_spec)::in, list(error_spec)::out) is det.
 
 add_pass_3_pred_decl(ItemPredDecl, Status, !ModuleInfo, !QualInfo, !Specs) :-
-    ItemPredDecl = item_pred_decl_info(_, _, _, _, PredOrFunc, SymName,
-        TypesAndModes, _WithType, _WithInst, _, _, _, _, Context, _SeqNum),
+    PredOrFunc = ItemPredDecl ^ pf_which,
     (
         PredOrFunc = pf_predicate
     ;
         PredOrFunc = pf_function,
+        SymName = ItemPredDecl ^ pf_name,
+        TypesAndModes = ItemPredDecl ^ pf_arg_decls,
+        Context = ItemPredDecl ^ pf_context,
         list.length(TypesAndModes, PredArity),
         adjust_func_arity(pf_function, FuncArity, PredArity),
         maybe_check_field_access_function(SymName, FuncArity, Status,

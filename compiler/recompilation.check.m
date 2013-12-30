@@ -933,7 +933,7 @@ check_for_ambiguities(NeedQualifier, OldTimestamp, VersionNumbers, Item,
     ;
         Item = item_pred_decl(ItemPredDecl),
         ItemPredDecl = item_pred_decl_info(_, _, _, _, PredOrFunc, Name, Args,
-            WithType, _, _, _, _, _, _, _),
+            _, WithType, _, _, _, _, _, _, _),
         check_for_pred_or_func_item_ambiguity(no, NeedQualifier, OldTimestamp,
             VersionNumbers, PredOrFunc, Name, Args, WithType, !Info)
     ;
@@ -959,7 +959,7 @@ check_class_method_for_ambiguities(NeedQualifier, OldTimestamp, VersionNumbers,
         ClassMethod, !Info) :-
     (
         ClassMethod = method_pred_or_func(_, _, _, PredOrFunc, MethodName,
-            MethodArgs, MethodWithType, _, _, _, _, _, _),
+            MethodArgs, _, MethodWithType, _, _, _, _, _, _),
         check_for_pred_or_func_item_ambiguity(yes, NeedQualifier, OldTimestamp,
             VersionNumbers, PredOrFunc, MethodName, MethodArgs, MethodWithType,
             !Info)
@@ -1171,6 +1171,7 @@ check_type_defn_ambiguity_with_functor(NeedQualifier, TypeCtor, TypeDefn,
     (
         ( TypeDefn = parse_tree_abstract_type(_)
         ; TypeDefn = parse_tree_eqv_type(_)
+        ; TypeDefn = parse_tree_subtype(_, _)
         ; TypeDefn = parse_tree_foreign_type(_, _, _)
         ; TypeDefn = parse_tree_solver_type(_, _)
         )

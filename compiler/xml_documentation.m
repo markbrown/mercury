@@ -374,6 +374,7 @@ type_documentation(C, type_ctor(TypeName, TypeArity), TypeDefn, !Xmls) :-
 
 type_xml_tag(hlds_du_type(_, _, _, _, _, _, _, _, _)) = "du_type".
 type_xml_tag(hlds_eqv_type(_)) = "eqv_type".
+type_xml_tag(hlds_subtype(_, _)) = "subtype".
 type_xml_tag(hlds_foreign_type(_)) = "foreign_type".
 type_xml_tag(hlds_solver_type(_, _)) = "solver_type".
 type_xml_tag(hlds_abstract_type(_)) = "abstract_type".
@@ -391,6 +392,7 @@ type_body_to_xml(C, TVarset, hlds_du_type(Ctors, _, _, _, _, _, _, _, _)) =
 type_body_to_xml(_, TVarset, hlds_eqv_type(Type)) =
     [elem("equivalent_type", [], [mer_type_to_xml(TVarset, Type)])].
     % XXX TODO
+type_body_to_xml(_, _, hlds_subtype(_, _)) = [nyi("hlds_subtype")].
 type_body_to_xml(_, _, hlds_foreign_type(_)) = [nyi("hlds_foreign_type")].
 type_body_to_xml(_, _, hlds_solver_type(_, _)) = [nyi("hlds_solver_type")].
 type_body_to_xml(_, _, hlds_abstract_type(_)) = [nyi("hlds_abstract_type")].
@@ -595,7 +597,7 @@ mer_inst_to_xml(InstVarSet, Inst) = Xml :-
         Inst = free,
         Xml = elem("free", [], [])
     ;
-        Inst = free(_),
+        Inst = free(_, _),
         Xml = elem("free", [], [])
     ;
         Inst = bound(U, _, BoundInsts),
@@ -643,8 +645,8 @@ inst_name_to_xml(_, ground_inst(_, _, _, _)) = nyi("ground_inst").
 inst_name_to_xml(_, any_inst(_, _, _, _)) = nyi("any_inst").
 inst_name_to_xml(_, shared_inst(_)) = nyi("shared_inst").
 inst_name_to_xml(_, mostly_uniq_inst(_)) = nyi("mostly_uniq_inst").
-inst_name_to_xml(_, typed_ground(_, _)) = nyi("typed_ground").
-inst_name_to_xml(_, typed_inst(_, _)) = nyi("typed_inst").
+inst_name_to_xml(_, typed_ground(_, _, _)) = nyi("typed_ground").
+inst_name_to_xml(_, typed_inst(_, _, _)) = nyi("typed_inst").
 
 :- func uniqueness_to_xml(uniqueness) = xml.
 

@@ -1036,7 +1036,7 @@ find_items_used_by_instance(ClassId, Defn, !Info) :-
 
 find_items_used_by_class_method(Method, !Info) :-
     Method = method_pred_or_func(_, _, _, _, _, ArgTypesAndModes, _, _, _, _,
-        _, Constraints, _),
+        _, _, Constraints, _),
     find_items_used_by_class_context(Constraints, !Info),
     list.foldl(find_items_used_by_type_and_mode, ArgTypesAndModes, !Info).
 find_items_used_by_class_method(Method, !Info) :-
@@ -1063,6 +1063,9 @@ find_items_used_by_type_body(hlds_du_type(Ctors, _, _, _, _, _, _, _, _),
     list.foldl(find_items_used_by_ctor, Ctors, !Info).
 find_items_used_by_type_body(hlds_eqv_type(Type), !Info) :-
     find_items_used_by_type(Type, !Info).
+find_items_used_by_type_body(hlds_subtype(Type, Inst), !Info) :-
+    find_items_used_by_type(Type, !Info),
+    find_items_used_by_inst(Inst, !Info).
 find_items_used_by_type_body(hlds_abstract_type(_), !Info).
 find_items_used_by_type_body(hlds_foreign_type(_), !Info).
     % rafe: XXX Should we trace the representation type?
@@ -1324,7 +1327,7 @@ find_items_used_by_inst(Inst, !Info) :-
     (
         ( Inst = not_reached
         ; Inst = free
-        ; Inst = free(_)
+        ; Inst = free(_, _)
         ; Inst = inst_var(_)
         )
     ;
@@ -1388,10 +1391,10 @@ find_items_used_by_inst_name(InstName, !Info) :-
         ),
         find_items_used_by_inst_name(SubInstName, !Info)
     ;
-        InstName = typed_ground(_, Type),
+        InstName = typed_ground(_, Type, _),
         find_items_used_by_type(Type, !Info)
     ;
-        InstName = typed_inst(Type, SubInstName),
+        InstName = typed_inst(Type, SubInstName, _),
         find_items_used_by_type(Type, !Info),
         find_items_used_by_inst_name(SubInstName, !Info)
     ).

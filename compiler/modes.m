@@ -1393,7 +1393,7 @@ check_mode_of_main([Di, Uo], ModuleInfo) :-
     inst_expand(ModuleInfo, DiInitialInst, ground(unique, none)),
     inst_expand(ModuleInfo, DiFinalInst, ground(clobbered, none)),
     inst_expand(ModuleInfo, UoInitialInst, Free),
-    ( Free = free ; Free = free(_Type) ),
+    ( Free = free ; Free = free(_Type, _PropCtors) ),
     inst_expand(ModuleInfo, UoFinalInst, ground(unique, none)).
 
 :- func report_eval_method_requires_ground_args(proc_info) = error_spec.

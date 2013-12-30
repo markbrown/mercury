@@ -959,7 +959,7 @@ inst_size_2(ModuleInfo, Inst, !.Expansions, Size) :-
     (
         ( Inst = not_reached
         ; Inst = free
-        ; Inst = free(_)
+        ; Inst = free(_, _)
         ; Inst = ground(_, _)
         ; Inst = any(_, _)
         ; Inst = inst_var(_)

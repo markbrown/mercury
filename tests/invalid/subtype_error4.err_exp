@@ -1,0 +1,4 @@
+subtype_error4.m:017: In instance declaration for
+subtype_error4.m:017:   `subtype_error4.c(subtype_error4.s)':
+subtype_error4.m:017:   the first argument is a subtype.
+For more information, recompile with `-E'.

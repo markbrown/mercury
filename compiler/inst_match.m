@@ -1422,7 +1422,7 @@ inst_is_clobbered(ModuleInfo, Inst) :-
     require_complete_switch [Inst]
     (
         ( Inst = free
-        ; Inst = free(_)
+        ; Inst = free(_, _)
         ; Inst = not_reached
         ; Inst = abstract_inst(_, _)    % XXX is this right?
         ),
@@ -1451,7 +1451,7 @@ inst_is_free(ModuleInfo, Inst) :-
     require_complete_switch [Inst]
     (
         ( Inst = free
-        ; Inst = free(_)
+        ; Inst = free(_, _)
         )
     ;
         ( Inst = ground(_, _)
@@ -1479,7 +1479,7 @@ inst_is_any(ModuleInfo, Inst) :-
         Inst = any(_, _)
     ;
         ( Inst = free
-        ; Inst = free(_)
+        ; Inst = free(_, _)
         ; Inst = ground(_, _)
         ; Inst = bound(_, _, _)
         ; Inst = not_reached
@@ -1509,7 +1509,7 @@ inst_is_bound(ModuleInfo, Inst) :-
         )
     ;
         ( Inst = free
-        ; Inst = free(_)
+        ; Inst = free(_, _)
         ),
         fail
     ;
@@ -1544,7 +1544,7 @@ inst_is_bound_to_functors(ModuleInfo, Inst, Functors) :-
         inst_is_bound_to_functors(ModuleInfo, NextInst, Functors)
     ;
         ( Inst = free
-        ; Inst = free(_)
+        ; Inst = free(_, _)
         ; Inst = any(_, _)
         ; Inst = ground(_, _)
         ; Inst = abstract_inst(_, _)
@@ -1730,7 +1730,7 @@ inst_is_ground_mt_2(ModuleInfo, MaybeType, Inst, !Expansions) :-
     require_complete_switch [Inst]
     (
         ( Inst = free
-        ; Inst = free(_)
+        ; Inst = free(_, _)
         ),
         fail
     ;
@@ -1786,7 +1786,7 @@ inst_is_ground_or_any_2(ModuleInfo, Inst, !Expansions) :-
             BoundInsts, ModuleInfo, !Expansions)
     ;
         ( Inst = free
-        ; Inst = free(_)
+        ; Inst = free(_, _)
         ; Inst = abstract_inst(_, _)   % XXX is this right?
         ),
         fail
@@ -1871,7 +1871,7 @@ inst_is_mostly_unique_2(ModuleInfo, Inst, !Expansions) :-
     (
         ( Inst = not_reached
         ; Inst = free
-        ; Inst = free(_)
+        ; Inst = free(_, _)
         ; Inst = ground(unique, _)
         ; Inst = ground(mostly_unique, _)
         ; Inst = any(unique, _)
@@ -1929,7 +1929,7 @@ inst_is_not_partly_unique_2(ModuleInfo, Inst, !Expansions) :-
     (
         ( Inst = not_reached
         ; Inst = free
-        ; Inst = free(_)
+        ; Inst = free(_, _)
         ; Inst = any(shared, _)
         ; Inst = ground(shared, _)
         )
@@ -1985,7 +1985,7 @@ inst_is_not_fully_unique_2(ModuleInfo, Inst, !Expansions) :-
     (
         ( Inst = not_reached
         ; Inst = free
-        ; Inst = free(_)
+        ; Inst = free(_, _)
         ; Inst = ground(shared, _)
         ; Inst = ground(mostly_unique, _)
         ; Inst = any(shared, _)
@@ -2397,7 +2397,7 @@ inst_contains_instname_2(Inst, ModuleInfo, InstName, Contains, !Expansions) :-
         ( Inst = abstract_inst(_, _)
         ; Inst = any(_, _)
         ; Inst = free
-        ; Inst = free(_)
+        ; Inst = free(_, _)
         ; Inst = ground(_, _)
         ; Inst = inst_var(_)
         ; Inst = not_reached
@@ -2536,10 +2536,10 @@ inst_name_contains_inst_var(InstName, InstVar) :-
         InstName = mostly_uniq_inst(SubInstName),
         inst_name_contains_inst_var(SubInstName, InstVar)
     ;
-        InstName = typed_ground(_Uniq, _Type),
+        InstName = typed_ground(_Uniq, _Type, _PropCtors),
         fail
     ;
-        InstName = typed_inst(_Type, SubInstName),
+        InstName = typed_inst(_Type, SubInstName, _PropCtors),
         inst_name_contains_inst_var(SubInstName, InstVar)
     ).
 

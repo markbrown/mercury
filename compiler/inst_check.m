@@ -162,7 +162,7 @@ check_inst(FunctorsToTypes, InstId - InstDef, !Specs) :-
         ;
             ( Inst = any(_, _)
             ; Inst = free
-            ; Inst = free(_)
+            ; Inst = free(_, _)
             ; Inst = ground(_, _)
             ; Inst = not_reached
             ; Inst = inst_var(_)
@@ -358,6 +358,7 @@ get_du_functors_for_type_def(TypeDef) = Functors :-
         Functors = list.map(constructor_to_sym_name_and_arity, Constructors)
     ;
         ( TypeDefBody = hlds_eqv_type(_)
+        ; TypeDefBody = hlds_subtype(_, _)
         ; TypeDefBody = hlds_foreign_type(_)
         ; TypeDefBody = hlds_solver_type(_, _)
         ; TypeDefBody = hlds_abstract_type(_)

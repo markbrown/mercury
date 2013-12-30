@@ -381,7 +381,7 @@ add_arg_regs_in_inst(ModuleInfo, Seen0, Type, Inst0, Inst) :-
         ( Inst0 = ground(_, none)
         ; Inst0 = any(_, none)
         ; Inst0 = free
-        ; Inst0 = free(_)
+        ; Inst0 = free(_, _)
         ; Inst0 = not_reached
         ; Inst0 = inst_var(_)
         ; Inst0 = abstract_inst(_, _)
@@ -953,7 +953,7 @@ rebuild_cell_inst(ModuleInfo, InstMap, ConsId, Args, Inst0, Inst) :-
     ;
         % XXX do we need to handle any of these other cases?
         ( Inst0 = free
-        ; Inst0 = free(_)
+        ; Inst0 = free(_, _)
         ; Inst0 = any(_, none)
         ; Inst0 = ground(_, none)
         ; Inst0 = not_reached

@@ -412,6 +412,7 @@ process_type_defn(TypeCtor, TypeDefn, !FoundError, !ModuleInfo, !Specs) :-
         )
     ;
         ( Body = hlds_abstract_type(_)
+        ; Body = hlds_subtype(_, _)
         ; Body = hlds_solver_type(_, _)
         ; Body = hlds_eqv_type(_)
         ),
@@ -657,6 +658,8 @@ convert_type_defn(parse_tree_du_type(Body, MaybeUserEqComp,
         MaybeUserEqComp, MaybeDirectArgCtors, ReservedTagPragma, ReservedAddr,
         IsForeign).
 convert_type_defn(parse_tree_eqv_type(Body), _, _, hlds_eqv_type(Body)).
+convert_type_defn(parse_tree_subtype(Base, Inst), _, _,
+        hlds_subtype(Base, Inst)).
 convert_type_defn(parse_tree_solver_type(SolverTypeDetails, MaybeUserEqComp),
         _, _, hlds_solver_type(SolverTypeDetails, MaybeUserEqComp)).
 convert_type_defn(parse_tree_abstract_type(Details), _, _,

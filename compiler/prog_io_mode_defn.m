@@ -34,6 +34,11 @@
 :- pred parse_mode_defn(module_name::in, varset::in, term::in, term::in,
     condition::in, prog_context::in, int::in, maybe1(item)::out) is det.
 
+    % Parse an inst appearing in a declaration.
+    %
+:- pred parse_inst_defn_body(varset::in, term::in, maybe1(mer_inst)::out)
+    is det.
+
 %-----------------------------------------------------------------------------e
 
 :- implementation.
@@ -134,10 +139,12 @@ parse_inst_defn_base(ModuleName, VarSet, HeadTerm, BodyTerm, Condition,
                         [always(Pieces)])]),
                 MaybeItem = error1([Spec])
             ;
-                % Should improve the error message here.
+                parse_inst_defn_body(VarSet, BodyTerm, MaybeInst),
                 (
-                    convert_inst(no_allow_constrained_inst_var, BodyTerm, Inst)
-                ->
+                    MaybeInst = error1(Specs),
+                    MaybeItem = error1(Specs)
+                ;
+                    MaybeInst = ok1(Inst),
                     varset.coerce(VarSet, InstVarSet),
                     list.map(term.coerce_var, Args, InstArgs),
                     InstDefn = eqv_inst(Inst),
@@ -145,14 +152,6 @@ parse_inst_defn_base(ModuleName, VarSet, HeadTerm, BodyTerm, Condition,
                         InstArgs, InstDefn, Condition, Context, SeqNum),
                     Item = item_inst_defn(ItemInstDefn),
                     MaybeItem = ok1(Item)
-                ;
-                    BodyTermStr = describe_error_term(VarSet, BodyTerm),
-                    Pieces = [words("Error: syntax error in inst body at"),
-                        words(BodyTermStr), suffix("."), nl],
-                    Spec = error_spec(severity_error, phase_term_to_parse_tree,
-                        [simple_msg(get_term_context(BodyTerm),
-                            [always(Pieces)])]),
-                    MaybeItem = error1([Spec])
                 )
             )
         ;
@@ -163,6 +162,21 @@ parse_inst_defn_base(ModuleName, VarSet, HeadTerm, BodyTerm, Condition,
                 [simple_msg(get_term_context(HeadTerm), [always(Pieces)])]),
             MaybeItem = error1([Spec])
         )
+    ).
+
+parse_inst_defn_body(VarSet, BodyTerm, MaybeInst) :-
+    (
+        convert_inst(no_allow_constrained_inst_var, BodyTerm, Inst)
+    ->
+        MaybeInst = ok1(Inst)
+    ;
+        % Should improve the error message here.
+        BodyTermStr = describe_error_term(VarSet, BodyTerm),
+        Pieces = [words("Error: syntax error in inst body at"),
+            words(BodyTermStr), suffix("."), nl],
+        Spec = error_spec(severity_error, phase_term_to_parse_tree,
+            [simple_msg(get_term_context(BodyTerm), [always(Pieces)])]),
+        MaybeInst = error1([Spec])
     ).
 
 :- pred parse_abstract_inst_defn(module_name::in, varset::in, term::in,
